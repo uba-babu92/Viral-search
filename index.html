@@ -10,13 +10,12 @@
   input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #eee; font-size: 16px; margin-bottom: 8px; }
   button.main { width: 100%; padding: 10px; border: 0; border-radius: 8px; background: #3b82f6; color: #fff; font-size: 16px; }
   .small { font-size: 12px; color: #888; margin: 4px 0 12px; }
+  .modes { display: flex; gap: 8px; margin: 12px 0; }
+  .modes button { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #ccc; font-size: 15px; }
+  .modes button.on { background: #eee; color: #111; border-color: #eee; }
   .box { background: #1c1c1c; border-radius: 10px; padding: 12px; margin: 12px 0; font-size: 14px; }
-  .box b { display: block; margin-bottom: 8px; }
   #myInfo { color: #facc15; margin: 6px 0 8px; font-size: 13px; }
   #status { margin: 12px 0; font-size: 14px; color: #aaa; }
-  .tabs { display: flex; gap: 8px; margin: 8px 0; }
-  .tabs button { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #ccc; font-size: 14px; }
-  .tabs button.on { background: #eee; color: #111; border-color: #eee; }
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
   .tile { position: relative; aspect-ratio: 9 / 16; background: #222; border-radius: 6px; overflow: hidden; display: block; }
   .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -34,27 +33,33 @@
 
 <input id="token" type="password" placeholder="Clé API Apify">
 
-<div class="box">
-  <b>Ma vidéo</b>
+<div class="modes">
+  <button id="modeMine">Ma vidéo</button>
+  <button id="modeSearch" class="on">Chercher</button>
+</div>
+
+<div id="boxMine" class="box" hidden>
   <input type="file" id="myFile" accept="video/*">
   <div id="myInfo"></div>
   <input id="myKeywords" type="text" placeholder="Mots-clés de ta vidéo (ex : cuisine rapide)">
   <button class="main" id="similar">Trouver les vidéos similaires</button>
 </div>
 
-<input id="query" type="text" placeholder="Ou une autre thématique (ex : sneakers)">
-<button class="main" id="go">Chercher les vidéos virales</button>
+<div id="boxSearch">
+  <input id="query" type="text" placeholder="Thématique (ex : sneakers)">
+  <div class="modes">
+    <button id="typeVideos" class="on">Vidéos</button>
+    <button id="typeCarrousels">Carrousels</button>
+  </div>
+  <button class="main" id="go">Chercher</button>
+</div>
+
 <div class="small">La clé reste dans ton navigateur, jamais envoyée ailleurs que chez Apify.</div>
 <div id="status"></div>
 
-<div class="tabs" id="tabs" hidden>
-  <button id="tabVideos" class="on">Vidéos</button>
-  <button id="tabCarrousels">Carrousels</button>
-</div>
-
 <div id="panel" hidden></div>
 <div id="results"></div>
-<details id="raw" hidden><summary>Données brutes (1ère vidéo)</summary><pre id="rawText"></pre></details>
+<details id="raw" hidden><summary>Données brutes (1er résultat)</summary><pre id="rawText"></pre></details>
 
 <script>
 const VIDEO_ACTOR = "mu0i~tiktok-search-scraper";
@@ -62,9 +67,32 @@ const PHOTO_ACTOR = "scrapingmonkey~tiktok-scraper";
 const tokenInput = document.getElementById("token");
 tokenInput.value = localStorage.getItem("apifyToken") || "";
 
-let allVideos = [];
-let carrousels = [];
+let items = [];        // résultats du type affiché
 let myVideo = null;
+let searchType = "videos";
+
+// Mode : « Ma vidéo » ou « Chercher » (un seul à la fois)
+function setMode(mode) {
+  const mine = mode === "mine";
+  document.getElementById("modeMine").classList.toggle("on", mine);
+  document.getElementById("modeSearch").classList.toggle("on", !mine);
+  document.getElementById("boxMine").hidden = !mine;
+  document.getElementById("boxSearch").hidden = mine;
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("panel").hidden = true;
+  document.getElementById("status").textContent = "";
+}
+document.getElementById("modeMine").addEventListener("click", () => setMode("mine"));
+document.getElementById("modeSearch").addEventListener("click", () => setMode("search"));
+
+// Type de recherche : Vidéos ou Carrousels (une seule recherche)
+function setType(t) {
+  searchType = t;
+  document.getElementById("typeVideos").classList.toggle("on", t === "videos");
+  document.getElementById("typeCarrousels").classList.toggle("on", t === "carrousels");
+}
+document.getElementById("typeVideos").addEventListener("click", () => setType("videos"));
+document.getElementById("typeCarrousels").addEventListener("click", () => setType("carrousels"));
 
 document.getElementById("go").addEventListener("click", () => search());
 document.getElementById("query").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
@@ -72,10 +100,9 @@ document.getElementById("similar").addEventListener("click", () => {
   const kw = document.getElementById("myKeywords").value.trim();
   if (!kw) { document.getElementById("status").textContent = "Écris 2 ou 3 mots-clés pour ta vidéo."; return; }
   document.getElementById("query").value = kw;
+  setType("videos");
   search(kw);
 });
-document.getElementById("tabVideos").addEventListener("click", () => setTab("videos"));
-document.getElementById("tabCarrousels").addEventListener("click", () => setTab("carrousels"));
 
 // Lit la durée, les dimensions et la taille de ta vidéo (rien n'est envoyé).
 document.getElementById("myFile").addEventListener("change", e => {
@@ -88,7 +115,6 @@ document.getElementById("myFile").addEventListener("change", e => {
     myVideo = { duration: v.duration, width: v.videoWidth, height: v.videoHeight, size: f.size };
     document.getElementById("myInfo").textContent =
       `Durée ${fmtDuration(v.duration)} · ${v.videoWidth}×${v.videoHeight} (${orient}) · ${(f.size / 1e6).toFixed(1)} Mo`;
-    if (allVideos.length) setTab(currentTab());
   };
   v.src = URL.createObjectURL(f);
 });
@@ -111,40 +137,31 @@ async function search(qArg) {
   document.getElementById("results").innerHTML = "";
   document.getElementById("panel").hidden = true;
   document.getElementById("raw").hidden = true;
-  document.getElementById("tabs").hidden = true;
   if (!token || !q) { status.textContent = "Mets ta clé et une thématique."; return; }
   localStorage.setItem("apifyToken", token);
-  status.textContent = "Recherche en cours (30 à 90 s)...";
+  status.textContent = "Recherche en cours (30 à 60 s)...";
 
   try {
-    const [videoItems, photoItems] = await Promise.all([
-      runActor(token, VIDEO_ACTOR, { queries: [q], maxVideos: 30 }),
-      runActor(token, PHOTO_ACTOR, { mode: "searchPhotos", searchTerms: [q], maxResults: 30, country: "FR" }).catch(e => { console.warn(e); return []; })
-    ]);
-    if (videoItems.length) {
-      document.getElementById("rawText").textContent = JSON.stringify(videoItems[0], null, 2).slice(0, 3000);
-      document.getElementById("raw").hidden = false;
+    if (searchType === "videos") {
+      const data = await runActor(token, VIDEO_ACTOR, { queries: [q], maxVideos: 30 });
+      showRaw(data[0]);
+      items = data.map(normalize).filter(v => v.views > 0).sort((a, b) => b.views - a.views);
+    } else {
+      const data = await runActor(token, PHOTO_ACTOR, { mode: "searchPhotos", searchTerms: [q], maxResults: 30, country: "FR" });
+      showRaw(data[0]);
+      items = data.map(normalizePhoto).sort((a, b) => b.views - a.views);
     }
-    allVideos = videoItems.map(normalize).filter(v => v.views > 0).sort((a, b) => b.views - a.views);
-    carrousels = photoItems.map(normalizePhoto).sort((a, b) => b.views - a.views);
-    document.getElementById("tabs").hidden = false;
-    setTab("videos");
+    status.textContent = items.length + " résultat(s), triés par vues.";
+    render(items);
   } catch (err) {
     status.textContent = "Échec : " + err.message;
   }
 }
 
-function currentTab() {
-  return document.getElementById("tabCarrousels").classList.contains("on") ? "carrousels" : "videos";
-}
-
-function setTab(tab) {
-  document.getElementById("tabVideos").classList.toggle("on", tab === "videos");
-  document.getElementById("tabCarrousels").classList.toggle("on", tab === "carrousels");
-  document.getElementById("panel").hidden = true;
-  const list = tab === "carrousels" ? carrousels : allVideos;
-  document.getElementById("status").textContent = list.length + " résultat(s), triés par vues.";
-  render(list, tab);
+function showRaw(first) {
+  if (!first) return;
+  document.getElementById("rawText").textContent = JSON.stringify(first, null, 2).slice(0, 3000);
+  document.getElementById("raw").hidden = false;
 }
 
 // Les noms de champs varient selon les scrapers : on teste plusieurs variantes.
@@ -159,25 +176,29 @@ function normalize(v) {
     text: text,
     hashtags: [...new Set((text.match(/#[\p{L}\p{N}_]+/gu) || []).map(h => h.toLowerCase()))],
     music: v.musicMeta?.musicName ?? v.music?.title ?? "",
-    author: v.authorMeta?.name ?? v.author?.uniqueId ?? v.authorName ?? v.username ?? "",
     url: v.webVideoUrl ?? v.url ?? "#",
     cover: v.videoMeta?.coverUrl ?? v.video?.cover ?? v.covers?.[0] ?? v.coverUrl ?? v.cover ?? v.thumbnail ?? ""
   };
 }
 
-// Carrousels (photos) : première image comme miniature, nombre de photos affiché.
+// Carrousels : on cherche toutes les URLs d'images dans la réponse, quel que soit le nom du champ.
+const IMG_RE = /^https?:\/\/.*(\.jpe?g|\.webp|\.png|tiktokcdn|byteimg|p16-|p19-|p77-)/i;
+function findImageUrls(obj, out = []) {
+  if (typeof obj === "string") { if (IMG_RE.test(obj)) out.push(obj); }
+  else if (Array.isArray(obj)) obj.forEach(x => findImageUrls(x, out));
+  else if (obj && typeof obj === "object") Object.values(obj).forEach(x => findImageUrls(x, out));
+  return [...new Set(out)];
+}
+
 function normalizePhoto(p) {
-  const imgs = p.images ?? p.slideshow_images ?? p.imagePost?.images ?? p.imagePostInfo?.displayImages ?? [];
-  const first = imgs[0];
-  const firstUrl = typeof first === "string" ? first : (first?.url ?? first?.url_list?.[0] ?? first?.displayImage?.url_list?.[0] ?? "");
+  const imgs = findImageUrls(p);
   return {
     views: Number(p.playCount ?? p.stats?.playCount ?? p.plays ?? 0),
     likes: Number(p.diggCount ?? p.stats?.diggCount ?? p.likeCount ?? p.likes ?? 0),
     date: p.createTimeISO ?? p.createTime ?? p.create_time ?? null,
     count: imgs.length,
     url: p.webVideoUrl ?? p.url ?? p.shareUrl ?? "#",
-    cover: firstUrl || p.cover || p.thumbnail || "",
-    text: p.text ?? p.desc ?? p.caption ?? ""
+    cover: imgs[0] ?? ""
   };
 }
 
@@ -198,30 +219,30 @@ function fmtDate(d) {
   return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-function render(list, tab) {
+function render(list) {
   const results = document.getElementById("results");
-  results.innerHTML = '<div class="grid">' + list.map((v) => {
-    const idx = allVideos.indexOf(v);
-    const sameLength = tab === "videos" && myVideo && Math.abs(v.duration - myVideo.duration) <= 3;
-    const lines = tab === "carrousels"
+  const isCarousel = searchType === "carrousels";
+  results.innerHTML = '<div class="grid">' + list.map((v, i) => {
+    const sameLength = !isCarousel && myVideo && Math.abs(v.duration - myVideo.duration) <= 3;
+    const lines = isCarousel
       ? `<span>👁 ${fmtNum(v.views)}</span><span>🖼 ${v.count}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`
       : `<span>👁 ${fmtNum(v.views)}</span><span>${fmtDuration(v.duration)}${sameLength ? " ✓" : ""}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`;
-    const btn = tab === "videos" ? `<button class="analyse" onclick="analyse(${idx})">Analyser le style</button>` : "";
+    const btn = isCarousel ? "" : `<button class="analyse" onclick="analyse(${i})">Analyser le style</button>`;
     return `
     <div class="tile">
       <a href="${v.url}" target="_blank" rel="noopener" style="position:absolute;inset:0"></a>
-      ${v.cover ? `<img src="${v.cover}" alt="">` : ""}
+      ${v.cover ? `<img src="${v.cover}" alt="" referrerpolicy="no-referrer">` : ""}
       <div class="overlay">${lines}</div>
       ${btn}
     </div>`;
   }).join("") + "</div>";
-  if (!list.length) results.innerHTML = "<div>Aucun résultat dans cet onglet.</div>";
+  if (!list.length) results.innerHTML = "<div>Aucun résultat.</div>";
 }
 
 // Analyse : stats de la vidéo + vidéos similaires déjà trouvées (même hashtag ou durée proche).
 function analyse(idx) {
-  const v = allVideos[idx];
-  const similar = allVideos.filter((o, j) => j !== idx && (
+  const v = items[idx];
+  const similar = items.filter((o, j) => j !== idx && (
     o.hashtags.some(h => v.hashtags.includes(h)) || Math.abs(o.duration - v.duration) <= 3
   )).slice(0, 6);
   const words = v.text.replace(/#[\p{L}\p{N}_]+/gu, "").trim().split(/\s+/).filter(Boolean).length;
