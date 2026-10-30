@@ -112,6 +112,7 @@ function render(videos) {
         <span>👁 ${fmtNum(v.views)}</span>
         <span>${fmtDuration(v.duration)}</span>
         <span>${fmtDate(v.date)}</span>
+        <span>♥ ${fmtNum(v.likes)}</span>
       </div>
     </a>`).join("") + "</div>";
 }
