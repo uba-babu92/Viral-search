@@ -45,17 +45,30 @@
 <details id="raw" hidden><summary>Données brutes (1ère vidéo)</summary><pre id="rawText"></pre></details>
 
 <script>
-const ACTOR = "mu0i~tiktok-search-scraper";
+const VIDEO_ACTOR = "mu0i~tiktok-search-scraper";
+const PHOTO_ACTOR = "scrapingmonkey~tiktok-scraper";
 const tokenInput = document.getElementById("token");
 tokenInput.value = localStorage.getItem("apifyToken") || "";
 
 let allVideos = [];
+let carrousels = [];
 let currentTab = "videos";
 
 document.getElementById("go").addEventListener("click", search);
 document.getElementById("query").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
 document.getElementById("tabVideos").addEventListener("click", () => setTab("videos"));
 document.getElementById("tabCarrousels").addEventListener("click", () => setTab("carrousels"));
+
+async function runActor(token, actor, input) {
+  const url = `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  if (!res.ok) throw new Error(actor + " : erreur " + res.status + " " + (await res.text()).slice(0, 150));
+  return res.json();
+}
 
 async function search() {
   const token = tokenInput.value.trim();
@@ -67,23 +80,19 @@ async function search() {
   document.getElementById("tabs").hidden = true;
   if (!token || !q) { status.textContent = "Mets ta clé et une thématique."; return; }
   localStorage.setItem("apifyToken", token);
-  status.textContent = "Recherche en cours (30 à 60 s)...";
+  status.textContent = "Recherche en cours (30 à 90 s)...";
 
   try {
-    const url = `https://api.apify.com/v2/acts/${ACTOR}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ queries: [q], maxVideos: 30 })
-    });
-    if (!res.ok) throw new Error("Erreur " + res.status + " : " + (await res.text()).slice(0, 200));
-    const items = await res.json();
-    if (items.length) {
-      document.getElementById("rawText").textContent = JSON.stringify(items[0], null, 2).slice(0, 3000);
+    const [videoItems, photoItems] = await Promise.all([
+      runActor(token, VIDEO_ACTOR, { queries: [q], maxVideos: 30 }),
+      runActor(token, PHOTO_ACTOR, { mode: "searchPhotos", searchTerms: [q], maxResults: 30, country: "FR" }).catch(e => { console.warn(e); return []; })
+    ]);
+    if (videoItems.length) {
+      document.getElementById("rawText").textContent = JSON.stringify(videoItems[0], null, 2).slice(0, 3000);
       document.getElementById("raw").hidden = false;
     }
-    allVideos = items.map(normalize).filter(v => v.views > 0)
-      .sort((a, b) => b.views - a.views);
+    allVideos = videoItems.map(normalize).filter(v => v.views > 0).sort((a, b) => b.views - a.views);
+    carrousels = photoItems.map(normalizePhoto).sort((a, b) => b.views - a.views);
     document.getElementById("tabs").hidden = false;
     setTab("videos");
   } catch (err) {
@@ -96,9 +105,9 @@ function setTab(tab) {
   document.getElementById("tabVideos").classList.toggle("on", tab === "videos");
   document.getElementById("tabCarrousels").classList.toggle("on", tab === "carrousels");
   document.getElementById("panel").hidden = true;
-  const list = allVideos.filter(v => tab === "carrousels" ? v.isCarousel : !v.isCarousel);
+  const list = tab === "carrousels" ? carrousels : allVideos;
   document.getElementById("status").textContent = list.length + " résultat(s), triés par vues.";
-  render(list);
+  render(list, tab);
 }
 
 // Les noms de champs varient selon les scrapers : on teste plusieurs variantes.
@@ -106,7 +115,6 @@ function normalize(v) {
   const created = v.createTimeISO ?? v.createTime ?? v.create_time ?? null;
   const text = v.text ?? v.desc ?? "";
   return {
-    raw: v,
     views: Number(v.playCount ?? v.stats?.playCount ?? v.plays ?? v.play_count ?? 0),
     likes: Number(v.diggCount ?? v.stats?.diggCount ?? v.likeCount ?? v.likes ?? 0),
     duration: Number(v.videoMeta?.duration ?? v.video?.duration ?? v.duration ?? 0),
@@ -114,10 +122,26 @@ function normalize(v) {
     text: text,
     hashtags: [...new Set((text.match(/#[\p{L}\p{N}_]+/gu) || []).map(h => h.toLowerCase()))],
     music: v.musicMeta?.musicName ?? v.music?.title ?? "",
-    isCarousel: !!(v.imagePost || v.images || v.isSlideshow || v.media_type === "carousel"),
     author: v.authorMeta?.name ?? v.author?.uniqueId ?? v.authorName ?? v.username ?? "",
     url: v.webVideoUrl ?? v.url ?? "#",
     cover: v.videoMeta?.coverUrl ?? v.video?.cover ?? v.covers?.[0] ?? v.coverUrl ?? v.cover ?? v.thumbnail ?? ""
+  };
+}
+
+// Carrousels (photos) : première image comme miniature, nombre de photos affiché.
+function normalizePhoto(p) {
+  const imgs = p.images ?? p.slideshow_images ?? p.imagePost?.images ?? p.imagePostInfo?.displayImages ?? [];
+  const first = imgs[0];
+  const firstUrl = typeof first === "string" ? first : (first?.url ?? first?.url_list?.[0] ?? first?.displayImage?.url_list?.[0] ?? "");
+  const text = p.text ?? p.desc ?? p.caption ?? "";
+  return {
+    views: Number(p.playCount ?? p.stats?.playCount ?? p.plays ?? 0),
+    likes: Number(p.diggCount ?? p.stats?.diggCount ?? p.likeCount ?? p.likes ?? 0),
+    date: p.createTimeISO ?? p.createTime ?? p.create_time ?? null,
+    count: imgs.length,
+    url: p.webVideoUrl ?? p.url ?? p.shareUrl ?? "#",
+    cover: firstUrl || p.cover || p.thumbnail || "",
+    text
   };
 }
 
@@ -138,20 +162,23 @@ function fmtDate(d) {
   return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-function render(list) {
+function render(list, tab) {
   const results = document.getElementById("results");
-  results.innerHTML = '<div class="grid">' + list.map((v, i) => `
+  results.innerHTML = '<div class="grid">' + list.map((v) => {
+    const idx = allVideos.indexOf(v);
+    const lines = tab === "carrousels"
+      ? `<span>👁 ${fmtNum(v.views)}</span><span>🖼 ${v.count}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`
+      : `<span>👁 ${fmtNum(v.views)}</span><span>${fmtDuration(v.duration)}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`;
+    const btn = tab === "videos" ? `<button class="analyse" onclick="analyse(${idx})">Analyser le style</button>` : "";
+    return `
     <div class="tile">
       <a href="${v.url}" target="_blank" rel="noopener" style="position:absolute;inset:0"></a>
       ${v.cover ? `<img src="${v.cover}" alt="">` : ""}
-      <div class="overlay">
-        <span>👁 ${fmtNum(v.views)}</span>
-        <span>${fmtDuration(v.duration)}</span>
-        <span>${fmtDate(v.date)}</span>
-        <span>♥ ${fmtNum(v.likes)}</span>
-      </div>
-      <button class="analyse" onclick="analyse(${allVideos.indexOf(v)})">Analyser le style</button>
-    </div>`).join("") + "</div>";
+      <div class="overlay">${lines}</div>
+      ${btn}
+    </div>`;
+  }).join("") + "</div>";
+  if (!list.length) results.innerHTML = "<div>Aucun résultat dans cet onglet.</div>";
 }
 
 // Analyse : stats de la vidéo + vidéos similaires déjà trouvées (même hashtag ou durée proche).
