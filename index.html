@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viral Finder — proto</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #111; color: #eee; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #eee; font-size: 16px; margin-bottom: 8px; }
+  button { width: 100%; padding: 10px; border: 0; border-radius: 8px; background: #3b82f6; color: #fff; font-size: 16px; }
+  .small { font-size: 12px; color: #888; margin: 4px 0 12px; }
+  .card { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid #222; }
+  .card img { width: 80px; height: 110px; object-fit: cover; border-radius: 6px; background: #222; flex-shrink: 0; }
+  .meta { font-size: 14px; }
+  .views { font-weight: 700; color: #facc15; }
+  .author { color: #888; font-size: 12px; }
+  a { color: #60a5fa; }
+  #status { margin: 12px 0; font-size: 14px; color: #aaa; }
+</style>
+</head>
+<body>
+<h1>Viral Finder (proto)</h1>
+
+<input id="token" type="password" placeholder="Clé API Apify">
+<input id="query" type="text" placeholder="Thématique (ex : cuisine, sneakers)">
+<button id="go">Chercher les vidéos virales</button>
+<div class="small">La clé reste dans ton navigateur, jamais envoyée ailleurs que chez Apify.</div>
+<div id="status"></div>
+<div id="results"></div>
+
+<script>
+const ACTOR = "mu0i~tiktok-search-scraper";
+const tokenInput = document.getElementById("token");
+tokenInput.value = localStorage.getItem("apifyToken") || "";
+
+document.getElementById("go").addEventListener("click", search);
+document.getElementById("query").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+
+async function search() {
+  const token = tokenInput.value.trim();
+  const q = document.getElementById("query").value.trim();
+  const status = document.getElementById("status");
+  const results = document.getElementById("results");
+  results.innerHTML = "";
+  if (!token || !q) { status.textContent = "Mets ta clé et une thématique."; return; }
+  localStorage.setItem("apifyToken", token);
+  status.textContent = "Recherche en cours (peut prendre 30 à 60 s)...";
+
+  try {
+    const url = `https://api.apify.com/v2/acts/${ACTOR}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ searchQueries: [q], maxVideos: 30 })
+    });
+    if (!res.ok) throw new Error("Erreur " + res.status + " : " + (await res.text()).slice(0, 200));
+    const items = await res.json();
+    const videos = items.map(normalize).filter(v => v.views > 0)
+      .sort((a, b) => b.views - a.views);
+    status.textContent = videos.length + " vidéos trouvées, triées par vues.";
+    render(videos);
+  } catch (err) {
+    status.textContent = "Échec : " + err.message;
+  }
+}
+
+// Les noms de champs varient selon les scrapers : on teste plusieurs variantes.
+function normalize(v) {
+  return {
+    views: Number(v.playCount ?? v.stats?.playCount ?? v.plays ?? 0),
+    likes: Number(v.diggCount ?? v.stats?.diggCount ?? v.likes ?? 0),
+    text: v.text ?? v.desc ?? "",
+    author: v.authorMeta?.name ?? v.author?.uniqueId ?? v.author ?? "",
+    url: v.webVideoUrl ?? v.url ?? "#",
+    cover: v.videoMeta?.coverUrl ?? v.covers?.[0] ?? v.cover ?? ""
+  };
+}
+
+function fmt(n) {
+  return n >= 1e6 ? (n / 1e6).toFixed(1) + " M" : n >= 1e3 ? (n / 1e3).toFixed(1) + " k" : String(n);
+}
+
+function render(videos) {
+  const results = document.getElementById("results");
+  results.innerHTML = videos.map(v => `
+    <div class="card">
+      <img src="${v.cover}" alt="">
+      <div class="meta">
+        <div class="views">${fmt(v.views)} vues</div>
+        <div>${escapeHtml(v.text).slice(0, 120)}</div>
+        <div class="author">@${escapeHtml(v.author)} · ${fmt(v.likes)} likes</div>
+        <a href="${v.url}" target="_blank" rel="noopener">Voir la vidéo</a>
+      </div>
+    </div>`).join("");
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+</script>
+</body>
+</html>
