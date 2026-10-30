@@ -7,13 +7,22 @@
 <style>
   body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #111; color: #eee; }
   h1 { font-size: 20px; margin: 0 0 12px; }
-  input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #eee; font-size: 16px; margin-bottom: 8px; }
+  input, textarea { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #eee; font-size: 16px; margin-bottom: 8px; font-family: inherit; }
+  textarea { min-height: 110px; }
   button.main { width: 100%; padding: 10px; border: 0; border-radius: 8px; background: #3b82f6; color: #fff; font-size: 16px; }
+  button.main:disabled { background: #333; color: #888; }
+  button.plus { width: 46px; flex-shrink: 0; padding: 10px 0; border: 1px solid #333; border-radius: 8px; background: #1c1c1c; color: #eee; font-size: 22px; }
+  .row { display: flex; gap: 8px; align-items: stretch; }
+  .row input { margin-bottom: 0; }
   .small { font-size: 12px; color: #888; margin: 4px 0 12px; }
-  .modes { display: flex; gap: 8px; margin: 12px 0; }
-  .modes button { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #ccc; font-size: 15px; }
+  .rubriques { display: flex; gap: 6px; margin: 12px 0; }
+  .rubriques button { flex: 1; padding: 10px 4px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #ccc; font-size: 14px; }
+  .rubriques button.on { background: #eee; color: #111; border-color: #eee; }
+  .modes { display: flex; gap: 8px; margin: 8px 0; }
+  .modes button { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #ccc; font-size: 14px; }
   .modes button.on { background: #eee; color: #111; border-color: #eee; }
   .box { background: #1c1c1c; border-radius: 10px; padding: 12px; margin: 12px 0; font-size: 14px; }
+  .box b { display: block; margin-bottom: 8px; }
   #myInfo { color: #facc15; margin: 6px 0 8px; font-size: 13px; }
   #status { margin: 12px 0; font-size: 14px; color: #aaa; }
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
@@ -26,6 +35,7 @@
   #panel .tag { color: #60a5fa; }
   details { margin-top: 16px; font-size: 12px; color: #888; }
   pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; color: #aaa; }
+  .hidden { display: none !important; }
 </style>
 </head>
 <body>
@@ -33,33 +43,51 @@
 
 <input id="token" type="password" placeholder="Clé API Apify">
 
-<div class="modes">
-  <button id="modeMine">Ma vidéo</button>
-  <button id="modeSearch" class="on">Chercher</button>
+<div class="rubriques">
+  <button id="rubRecherche" class="on">Recherche</button>
+  <button id="rubScript">Script</button>
+  <button id="rubMontage">Montage</button>
 </div>
 
-<div id="boxMine" class="box" hidden>
-  <input type="file" id="myFile" accept="video/*">
-  <div id="myInfo"></div>
-  <input id="myKeywords" type="text" placeholder="Mots-clés de ta vidéo (ex : cuisine rapide)">
-  <button class="main" id="similar">Trouver les vidéos similaires</button>
-</div>
+<!-- ===== RECHERCHE ===== -->
+<section id="secRecherche">
+  <div class="row">
+    <input id="query" type="text" placeholder="Thématique (ex : sneakers)">
+    <button class="plus" id="plusBtn" title="Ajouter ma vidéo">+</button>
+    <input id="myFile" type="file" accept="video/*" class="hidden">
+  </div>
 
-<div id="boxSearch">
-  <input id="query" type="text" placeholder="Thématique (ex : sneakers)">
-  <div class="modes">
+  <div id="boxMine" class="box hidden">
+    <div id="myInfo"></div>
+    <input id="myKeywords" type="text" placeholder="Mots-clés de ta vidéo (ex : cuisine rapide)">
+    <button class="main" id="similar">Trouver les vidéos similaires</button>
+  </div>
+
+  <div class="modes" id="typeModes">
     <button id="typeVideos" class="on">Vidéos</button>
     <button id="typeCarrousels">Carrousels</button>
   </div>
   <button class="main" id="go">Chercher</button>
-</div>
+  <div class="small">La clé reste dans ton navigateur, jamais envoyée ailleurs que chez Apify.</div>
+  <div id="status"></div>
+  <div id="panel" class="hidden"></div>
+  <div id="results"></div>
+  <details id="raw" class="hidden"><summary>Données brutes (1er résultat)</summary><pre id="rawText"></pre></details>
+</section>
 
-<div class="small">La clé reste dans ton navigateur, jamais envoyée ailleurs que chez Apify.</div>
-<div id="status"></div>
+<!-- ===== SCRIPT (vide pour l'instant) ===== -->
+<section id="secScript" class="hidden">
+  <div class="box">Bientôt : écriture de scripts avec une IA (Mistral).</div>
+</section>
 
-<div id="panel" hidden></div>
-<div id="results"></div>
-<details id="raw" hidden><summary>Données brutes (1er résultat)</summary><pre id="rawText"></pre></details>
+<!-- ===== MONTAGE ===== -->
+<section id="secMontage" class="hidden">
+  <textarea id="montagePrompt">Sous-titres, texte à l'écran en gros, sans musique.</textarea>
+  <input id="montageFile" type="file" accept="video/*">
+  <div id="montageInfo" class="small"></div>
+  <button class="main" id="montageGo" disabled>Lancer le montage</button>
+  <div class="small">Le rendu n'est pas encore branché : il faut d'abord le relais sécurisé pour la clé Shotstack.</div>
+</section>
 
 <script>
 const VIDEO_ACTOR = "mu0i~tiktok-search-scraper";
@@ -67,25 +95,24 @@ const PHOTO_ACTOR = "scrapingmonkey~tiktok-scraper";
 const tokenInput = document.getElementById("token");
 tokenInput.value = localStorage.getItem("apifyToken") || "";
 
-let items = [];        // résultats du type affiché
+let items = [];
 let myVideo = null;
 let searchType = "videos";
+let mineOpen = false;
 
-// Mode : « Ma vidéo » ou « Chercher » (un seul à la fois)
-function setMode(mode) {
-  const mine = mode === "mine";
-  document.getElementById("modeMine").classList.toggle("on", mine);
-  document.getElementById("modeSearch").classList.toggle("on", !mine);
-  document.getElementById("boxMine").hidden = !mine;
-  document.getElementById("boxSearch").hidden = mine;
-  document.getElementById("results").innerHTML = "";
-  document.getElementById("panel").hidden = true;
-  document.getElementById("status").textContent = "";
+// ----- Rubriques -----
+function setRubrique(r) {
+  const map = { recherche: "rubRecherche", script: "rubScript", montage: "rubMontage" };
+  for (const k in map) document.getElementById(map[k]).classList.toggle("on", k === r);
+  document.getElementById("secRecherche").classList.toggle("hidden", r !== "recherche");
+  document.getElementById("secScript").classList.toggle("hidden", r !== "script");
+  document.getElementById("secMontage").classList.toggle("hidden", r !== "montage");
 }
-document.getElementById("modeMine").addEventListener("click", () => setMode("mine"));
-document.getElementById("modeSearch").addEventListener("click", () => setMode("search"));
+document.getElementById("rubRecherche").addEventListener("click", () => setRubrique("recherche"));
+document.getElementById("rubScript").addEventListener("click", () => setRubrique("script"));
+document.getElementById("rubMontage").addEventListener("click", () => setRubrique("montage"));
 
-// Type de recherche : Vidéos ou Carrousels (une seule recherche)
+// ----- Recherche : type Vidéos / Carrousels -----
 function setType(t) {
   searchType = t;
   document.getElementById("typeVideos").classList.toggle("on", t === "videos");
@@ -94,17 +121,8 @@ function setType(t) {
 document.getElementById("typeVideos").addEventListener("click", () => setType("videos"));
 document.getElementById("typeCarrousels").addEventListener("click", () => setType("carrousels"));
 
-document.getElementById("go").addEventListener("click", () => search());
-document.getElementById("query").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
-document.getElementById("similar").addEventListener("click", () => {
-  const kw = document.getElementById("myKeywords").value.trim();
-  if (!kw) { document.getElementById("status").textContent = "Écris 2 ou 3 mots-clés pour ta vidéo."; return; }
-  document.getElementById("query").value = kw;
-  setType("videos");
-  search(kw);
-});
-
-// Lit la durée, les dimensions et la taille de ta vidéo (rien n'est envoyé).
+// ----- « + » : ajouter ma vidéo à côté de la recherche -----
+document.getElementById("plusBtn").addEventListener("click", () => document.getElementById("myFile").click());
 document.getElementById("myFile").addEventListener("change", e => {
   const f = e.target.files[0];
   if (!f) return;
@@ -115,10 +133,30 @@ document.getElementById("myFile").addEventListener("change", e => {
     myVideo = { duration: v.duration, width: v.videoWidth, height: v.videoHeight, size: f.size };
     document.getElementById("myInfo").textContent =
       `Durée ${fmtDuration(v.duration)} · ${v.videoWidth}×${v.videoHeight} (${orient}) · ${(f.size / 1e6).toFixed(1)} Mo`;
+    document.getElementById("boxMine").classList.remove("hidden");
   };
   v.src = URL.createObjectURL(f);
 });
+document.getElementById("similar").addEventListener("click", () => {
+  const kw = document.getElementById("myKeywords").value.trim();
+  if (!kw) { document.getElementById("status").textContent = "Écris 2 ou 3 mots-clés pour ta vidéo."; return; }
+  document.getElementById("query").value = kw;
+  setType("videos");
+  search(kw);
+});
 
+document.getElementById("go").addEventListener("click", () => search());
+document.getElementById("query").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+
+// ----- Montage : bouton prêt quand une vidéo est choisie -----
+document.getElementById("montageFile").addEventListener("change", e => {
+  const f = e.target.files[0];
+  const btn = document.getElementById("montageGo");
+  btn.disabled = !f;
+  document.getElementById("montageInfo").textContent = f ? `Vidéo : ${f.name} (${(f.size / 1e6).toFixed(1)} Mo)` : "";
+});
+
+// ----- Appels Apify -----
 async function runActor(token, actor, input) {
   const url = `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
   const res = await fetch(url, {
@@ -135,8 +173,8 @@ async function search(qArg) {
   const q = (typeof qArg === "string" ? qArg : document.getElementById("query").value).trim();
   const status = document.getElementById("status");
   document.getElementById("results").innerHTML = "";
-  document.getElementById("panel").hidden = true;
-  document.getElementById("raw").hidden = true;
+  document.getElementById("panel").classList.add("hidden");
+  document.getElementById("raw").classList.add("hidden");
   if (!token || !q) { status.textContent = "Mets ta clé et une thématique."; return; }
   localStorage.setItem("apifyToken", token);
   status.textContent = "Recherche en cours (30 à 60 s)...";
@@ -161,7 +199,7 @@ async function search(qArg) {
 function showRaw(first) {
   if (!first) return;
   document.getElementById("rawText").textContent = JSON.stringify(first, null, 2).slice(0, 3000);
-  document.getElementById("raw").hidden = false;
+  document.getElementById("raw").classList.remove("hidden");
 }
 
 // Les noms de champs varient selon les scrapers : on teste plusieurs variantes.
@@ -247,7 +285,7 @@ function analyse(idx) {
   )).slice(0, 6);
   const words = v.text.replace(/#[\p{L}\p{N}_]+/gu, "").trim().split(/\s+/).filter(Boolean).length;
   const panel = document.getElementById("panel");
-  panel.hidden = false;
+  panel.classList.remove("hidden");
   panel.innerHTML = `
     <h2>Style de la vidéo</h2>
     <div>Durée : <b>${fmtDuration(v.duration) || "inconnue"}</b></div>
