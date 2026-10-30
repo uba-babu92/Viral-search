@@ -8,13 +8,20 @@
   body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #111; color: #eee; }
   h1 { font-size: 20px; margin: 0 0 12px; }
   input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #eee; font-size: 16px; margin-bottom: 8px; }
-  button { width: 100%; padding: 10px; border: 0; border-radius: 8px; background: #3b82f6; color: #fff; font-size: 16px; }
+  button.main { width: 100%; padding: 10px; border: 0; border-radius: 8px; background: #3b82f6; color: #fff; font-size: 16px; }
   .small { font-size: 12px; color: #888; margin: 4px 0 12px; }
   #status { margin: 12px 0; font-size: 14px; color: #aaa; }
+  .tabs { display: flex; gap: 8px; margin: 8px 0; }
+  .tabs button { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #ccc; font-size: 14px; }
+  .tabs button.on { background: #eee; color: #111; border-color: #eee; }
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
   .tile { position: relative; aspect-ratio: 9 / 16; background: #222; border-radius: 6px; overflow: hidden; display: block; }
   .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .overlay { position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px #000; }
+  .analyse { position: absolute; bottom: 6px; left: 6px; right: 6px; padding: 5px; font-size: 12px; border: 0; border-radius: 6px; background: rgba(0,0,0,.7); color: #fff; }
+  #panel { background: #1c1c1c; border-radius: 10px; padding: 12px; margin: 12px 0; font-size: 14px; line-height: 1.5; }
+  #panel h2 { font-size: 16px; margin: 0 0 8px; }
+  #panel .tag { color: #60a5fa; }
   details { margin-top: 16px; font-size: 12px; color: #888; }
   pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; color: #aaa; }
 </style>
@@ -24,9 +31,16 @@
 
 <input id="token" type="password" placeholder="Clé API Apify">
 <input id="query" type="text" placeholder="Thématique (ex : cuisine, sneakers)">
-<button id="go">Chercher les vidéos virales</button>
+<button class="main" id="go">Chercher les vidéos virales</button>
 <div class="small">La clé reste dans ton navigateur, jamais envoyée ailleurs que chez Apify.</div>
 <div id="status"></div>
+
+<div class="tabs" id="tabs" hidden>
+  <button id="tabVideos" class="on">Vidéos</button>
+  <button id="tabCarrousels">Carrousels</button>
+</div>
+
+<div id="panel" hidden></div>
 <div id="results"></div>
 <details id="raw" hidden><summary>Données brutes (1ère vidéo)</summary><pre id="rawText"></pre></details>
 
@@ -35,15 +49,22 @@ const ACTOR = "mu0i~tiktok-search-scraper";
 const tokenInput = document.getElementById("token");
 tokenInput.value = localStorage.getItem("apifyToken") || "";
 
+let allVideos = [];
+let currentTab = "videos";
+
 document.getElementById("go").addEventListener("click", search);
 document.getElementById("query").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+document.getElementById("tabVideos").addEventListener("click", () => setTab("videos"));
+document.getElementById("tabCarrousels").addEventListener("click", () => setTab("carrousels"));
 
 async function search() {
   const token = tokenInput.value.trim();
   const q = document.getElementById("query").value.trim();
   const status = document.getElementById("status");
   document.getElementById("results").innerHTML = "";
+  document.getElementById("panel").hidden = true;
   document.getElementById("raw").hidden = true;
+  document.getElementById("tabs").hidden = true;
   if (!token || !q) { status.textContent = "Mets ta clé et une thématique."; return; }
   localStorage.setItem("apifyToken", token);
   status.textContent = "Recherche en cours (30 à 60 s)...";
@@ -61,24 +82,39 @@ async function search() {
       document.getElementById("rawText").textContent = JSON.stringify(items[0], null, 2).slice(0, 3000);
       document.getElementById("raw").hidden = false;
     }
-    const videos = items.map(normalize).filter(v => v.views > 0)
+    allVideos = items.map(normalize).filter(v => v.views > 0)
       .sort((a, b) => b.views - a.views);
-    status.textContent = videos.length + " vidéos trouvées, triées par vues.";
-    render(videos);
+    document.getElementById("tabs").hidden = false;
+    setTab("videos");
   } catch (err) {
     status.textContent = "Échec : " + err.message;
   }
 }
 
+function setTab(tab) {
+  currentTab = tab;
+  document.getElementById("tabVideos").classList.toggle("on", tab === "videos");
+  document.getElementById("tabCarrousels").classList.toggle("on", tab === "carrousels");
+  document.getElementById("panel").hidden = true;
+  const list = allVideos.filter(v => tab === "carrousels" ? v.isCarousel : !v.isCarousel);
+  document.getElementById("status").textContent = list.length + " résultat(s), triés par vues.";
+  render(list);
+}
+
 // Les noms de champs varient selon les scrapers : on teste plusieurs variantes.
 function normalize(v) {
   const created = v.createTimeISO ?? v.createTime ?? v.create_time ?? null;
+  const text = v.text ?? v.desc ?? "";
   return {
+    raw: v,
     views: Number(v.playCount ?? v.stats?.playCount ?? v.plays ?? v.play_count ?? 0),
     likes: Number(v.diggCount ?? v.stats?.diggCount ?? v.likeCount ?? v.likes ?? 0),
     duration: Number(v.videoMeta?.duration ?? v.video?.duration ?? v.duration ?? 0),
     date: created,
-    text: v.text ?? v.desc ?? "",
+    text: text,
+    hashtags: [...new Set((text.match(/#[\p{L}\p{N}_]+/gu) || []).map(h => h.toLowerCase()))],
+    music: v.musicMeta?.musicName ?? v.music?.title ?? "",
+    isCarousel: !!(v.imagePost || v.images || v.isSlideshow || v.media_type === "carousel"),
     author: v.authorMeta?.name ?? v.author?.uniqueId ?? v.authorName ?? v.username ?? "",
     url: v.webVideoUrl ?? v.url ?? "#",
     cover: v.videoMeta?.coverUrl ?? v.video?.cover ?? v.covers?.[0] ?? v.coverUrl ?? v.cover ?? v.thumbnail ?? ""
@@ -97,16 +133,16 @@ function fmtDuration(s) {
 
 function fmtDate(d) {
   if (!d) return "";
-  // Unix en secondes (nombre) ou date ISO (texte)
   const date = typeof d === "number" ? new Date(d * 1000) : new Date(d);
   if (isNaN(date)) return "";
   return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-function render(videos) {
+function render(list) {
   const results = document.getElementById("results");
-  results.innerHTML = '<div class="grid">' + videos.map(v => `
-    <a class="tile" href="${v.url}" target="_blank" rel="noopener">
+  results.innerHTML = '<div class="grid">' + list.map((v, i) => `
+    <div class="tile">
+      <a href="${v.url}" target="_blank" rel="noopener" style="position:absolute;inset:0"></a>
       ${v.cover ? `<img src="${v.cover}" alt="">` : ""}
       <div class="overlay">
         <span>👁 ${fmtNum(v.views)}</span>
@@ -114,7 +150,37 @@ function render(videos) {
         <span>${fmtDate(v.date)}</span>
         <span>♥ ${fmtNum(v.likes)}</span>
       </div>
-    </a>`).join("") + "</div>";
+      <button class="analyse" onclick="analyse(${allVideos.indexOf(v)})">Analyser le style</button>
+    </div>`).join("") + "</div>";
+}
+
+// Analyse : stats de la vidéo + vidéos similaires déjà trouvées (même hashtag ou durée proche).
+function analyse(idx) {
+  const v = allVideos[idx];
+  const similar = allVideos.filter((o, j) => j !== idx && (
+    o.hashtags.some(h => v.hashtags.includes(h)) || Math.abs(o.duration - v.duration) <= 3
+  )).slice(0, 6);
+  const words = v.text.replace(/#[\p{L}\p{N}_]+/gu, "").trim().split(/\s+/).filter(Boolean).length;
+  const panel = document.getElementById("panel");
+  panel.hidden = false;
+  panel.innerHTML = `
+    <h2>Style de la vidéo</h2>
+    <div>Durée : <b>${fmtDuration(v.duration) || "inconnue"}</b></div>
+    <div>Vues : <b>${fmtNum(v.views)}</b> · Likes : <b>${fmtNum(v.likes)}</b></div>
+    <div>Légende : <b>${words}</b> mots</div>
+    <div>Hashtags : ${v.hashtags.map(h => `<span class="tag">${h}</span>`).join(" ") || "aucun"}</div>
+    <div>Musique : ${escapeHtml(v.music) || "inconnue"}</div>
+    <h2 style="margin-top:12px">Vidéos au même style (${similar.length})</h2>
+    <div class="grid">${similar.map(o => `
+      <a class="tile" href="${o.url}" target="_blank" rel="noopener">
+        ${o.cover ? `<img src="${o.cover}" alt="">` : ""}
+        <div class="overlay"><span>👁 ${fmtNum(o.views)}</span></div>
+      </a>`).join("") || "<div>Aucune vidéo similaire dans les résultats.</div>"}</div>`;
+  panel.scrollIntoView({ behavior: "smooth" });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 </script>
 </body>
