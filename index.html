@@ -3,20 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Viral Finder — proto</title>
+<title>Viral Finder (proto)</title>
 <style>
   body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #111; color: #eee; }
   h1 { font-size: 20px; margin: 0 0 12px; }
   input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #eee; font-size: 16px; margin-bottom: 8px; }
   button { width: 100%; padding: 10px; border: 0; border-radius: 8px; background: #3b82f6; color: #fff; font-size: 16px; }
   .small { font-size: 12px; color: #888; margin: 4px 0 12px; }
-  .card { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid #222; }
-  .card img { width: 80px; height: 110px; object-fit: cover; border-radius: 6px; background: #222; flex-shrink: 0; }
-  .meta { font-size: 14px; }
-  .views { font-weight: 700; color: #facc15; }
-  .author { color: #888; font-size: 12px; }
-  a { color: #60a5fa; }
   #status { margin: 12px 0; font-size: 14px; color: #aaa; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+  .tile { position: relative; aspect-ratio: 9 / 16; background: #222; border-radius: 6px; overflow: hidden; display: block; }
+  .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .overlay { position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px #000; }
+  details { margin-top: 16px; font-size: 12px; color: #888; }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; color: #aaa; }
 </style>
 </head>
 <body>
@@ -28,6 +28,7 @@
 <div class="small">La clé reste dans ton navigateur, jamais envoyée ailleurs que chez Apify.</div>
 <div id="status"></div>
 <div id="results"></div>
+<details id="raw" hidden><summary>Données brutes (1ère vidéo)</summary><pre id="rawText"></pre></details>
 
 <script>
 const ACTOR = "mu0i~tiktok-search-scraper";
@@ -41,11 +42,11 @@ async function search() {
   const token = tokenInput.value.trim();
   const q = document.getElementById("query").value.trim();
   const status = document.getElementById("status");
-  const results = document.getElementById("results");
-  results.innerHTML = "";
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("raw").hidden = true;
   if (!token || !q) { status.textContent = "Mets ta clé et une thématique."; return; }
   localStorage.setItem("apifyToken", token);
-  status.textContent = "Recherche en cours (peut prendre 30 à 60 s)...";
+  status.textContent = "Recherche en cours (30 à 60 s)...";
 
   try {
     const url = `https://api.apify.com/v2/acts/${ACTOR}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
@@ -56,6 +57,10 @@ async function search() {
     });
     if (!res.ok) throw new Error("Erreur " + res.status + " : " + (await res.text()).slice(0, 200));
     const items = await res.json();
+    if (items.length) {
+      document.getElementById("rawText").textContent = JSON.stringify(items[0], null, 2).slice(0, 3000);
+      document.getElementById("raw").hidden = false;
+    }
     const videos = items.map(normalize).filter(v => v.views > 0)
       .sort((a, b) => b.views - a.views);
     status.textContent = videos.length + " vidéos trouvées, triées par vues.";
@@ -67,36 +72,48 @@ async function search() {
 
 // Les noms de champs varient selon les scrapers : on teste plusieurs variantes.
 function normalize(v) {
+  const created = v.createTimeISO ?? v.createTime ?? v.create_time ?? null;
   return {
-    views: Number(v.playCount ?? v.stats?.playCount ?? v.plays ?? 0),
-    likes: Number(v.diggCount ?? v.stats?.diggCount ?? v.likes ?? 0),
+    views: Number(v.playCount ?? v.stats?.playCount ?? v.plays ?? v.play_count ?? 0),
+    likes: Number(v.diggCount ?? v.stats?.diggCount ?? v.likeCount ?? v.likes ?? 0),
+    duration: Number(v.videoMeta?.duration ?? v.video?.duration ?? v.duration ?? 0),
+    date: created,
     text: v.text ?? v.desc ?? "",
-    author: v.authorMeta?.name ?? v.author?.uniqueId ?? v.author ?? "",
+    author: v.authorMeta?.name ?? v.author?.uniqueId ?? v.authorName ?? v.username ?? "",
     url: v.webVideoUrl ?? v.url ?? "#",
-    cover: v.videoMeta?.coverUrl ?? v.covers?.[0] ?? v.cover ?? ""
+    cover: v.videoMeta?.coverUrl ?? v.video?.cover ?? v.covers?.[0] ?? v.coverUrl ?? v.cover ?? v.thumbnail ?? ""
   };
 }
 
-function fmt(n) {
+function fmtNum(n) {
   return n >= 1e6 ? (n / 1e6).toFixed(1) + " M" : n >= 1e3 ? (n / 1e3).toFixed(1) + " k" : String(n);
+}
+
+function fmtDuration(s) {
+  if (!s) return "";
+  const m = Math.floor(s / 60), r = Math.round(s % 60);
+  return m + ":" + String(r).padStart(2, "0");
+}
+
+function fmtDate(d) {
+  if (!d) return "";
+  // Unix en secondes (nombre) ou date ISO (texte)
+  const date = typeof d === "number" ? new Date(d * 1000) : new Date(d);
+  if (isNaN(date)) return "";
+  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
 function render(videos) {
   const results = document.getElementById("results");
-  results.innerHTML = videos.map(v => `
-    <div class="card">
-      <img src="${v.cover}" alt="">
-      <div class="meta">
-        <div class="views">${fmt(v.views)} vues</div>
-        <div>${escapeHtml(v.text).slice(0, 120)}</div>
-        <div class="author">@${escapeHtml(v.author)} · ${fmt(v.likes)} likes</div>
-        <a href="${v.url}" target="_blank" rel="noopener">Voir la vidéo</a>
+  results.innerHTML = '<div class="grid">' + videos.map(v => `
+    <a class="tile" href="${v.url}" target="_blank" rel="noopener">
+      ${v.cover ? `<img src="${v.cover}" alt="">` : ""}
+      <div class="overlay">
+        <span>👁 ${fmtNum(v.views)}</span>
+        <span>${fmtDuration(v.duration)}</span>
+        <span>${fmtDate(v.date)}</span>
       </div>
-    </div>`).join("");
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    </a>`).join("") + "</div>";
 }
 </script>
 </body>
