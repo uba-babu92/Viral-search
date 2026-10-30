@@ -10,6 +10,9 @@
   input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #eee; font-size: 16px; margin-bottom: 8px; }
   button.main { width: 100%; padding: 10px; border: 0; border-radius: 8px; background: #3b82f6; color: #fff; font-size: 16px; }
   .small { font-size: 12px; color: #888; margin: 4px 0 12px; }
+  .box { background: #1c1c1c; border-radius: 10px; padding: 12px; margin: 12px 0; font-size: 14px; }
+  .box b { display: block; margin-bottom: 8px; }
+  #myInfo { color: #facc15; margin: 6px 0 8px; font-size: 13px; }
   #status { margin: 12px 0; font-size: 14px; color: #aaa; }
   .tabs { display: flex; gap: 8px; margin: 8px 0; }
   .tabs button { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #ccc; font-size: 14px; }
@@ -30,7 +33,16 @@
 <h1>Viral Finder (proto)</h1>
 
 <input id="token" type="password" placeholder="Clé API Apify">
-<input id="query" type="text" placeholder="Thématique (ex : cuisine, sneakers)">
+
+<div class="box">
+  <b>Ma vidéo</b>
+  <input type="file" id="myFile" accept="video/*">
+  <div id="myInfo"></div>
+  <input id="myKeywords" type="text" placeholder="Mots-clés de ta vidéo (ex : cuisine rapide)">
+  <button class="main" id="similar">Trouver les vidéos similaires</button>
+</div>
+
+<input id="query" type="text" placeholder="Ou une autre thématique (ex : sneakers)">
 <button class="main" id="go">Chercher les vidéos virales</button>
 <div class="small">La clé reste dans ton navigateur, jamais envoyée ailleurs que chez Apify.</div>
 <div id="status"></div>
@@ -52,12 +64,34 @@ tokenInput.value = localStorage.getItem("apifyToken") || "";
 
 let allVideos = [];
 let carrousels = [];
-let currentTab = "videos";
+let myVideo = null;
 
-document.getElementById("go").addEventListener("click", search);
+document.getElementById("go").addEventListener("click", () => search());
 document.getElementById("query").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+document.getElementById("similar").addEventListener("click", () => {
+  const kw = document.getElementById("myKeywords").value.trim();
+  if (!kw) { document.getElementById("status").textContent = "Écris 2 ou 3 mots-clés pour ta vidéo."; return; }
+  document.getElementById("query").value = kw;
+  search(kw);
+});
 document.getElementById("tabVideos").addEventListener("click", () => setTab("videos"));
 document.getElementById("tabCarrousels").addEventListener("click", () => setTab("carrousels"));
+
+// Lit la durée, les dimensions et la taille de ta vidéo (rien n'est envoyé).
+document.getElementById("myFile").addEventListener("change", e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const v = document.createElement("video");
+  v.preload = "metadata";
+  v.onloadedmetadata = () => {
+    const orient = v.videoHeight > v.videoWidth ? "vertical" : v.videoWidth > v.videoHeight ? "horizontal" : "carré";
+    myVideo = { duration: v.duration, width: v.videoWidth, height: v.videoHeight, size: f.size };
+    document.getElementById("myInfo").textContent =
+      `Durée ${fmtDuration(v.duration)} · ${v.videoWidth}×${v.videoHeight} (${orient}) · ${(f.size / 1e6).toFixed(1)} Mo`;
+    if (allVideos.length) setTab(currentTab());
+  };
+  v.src = URL.createObjectURL(f);
+});
 
 async function runActor(token, actor, input) {
   const url = `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
@@ -70,9 +104,9 @@ async function runActor(token, actor, input) {
   return res.json();
 }
 
-async function search() {
+async function search(qArg) {
   const token = tokenInput.value.trim();
-  const q = document.getElementById("query").value.trim();
+  const q = (typeof qArg === "string" ? qArg : document.getElementById("query").value).trim();
   const status = document.getElementById("status");
   document.getElementById("results").innerHTML = "";
   document.getElementById("panel").hidden = true;
@@ -100,8 +134,11 @@ async function search() {
   }
 }
 
+function currentTab() {
+  return document.getElementById("tabCarrousels").classList.contains("on") ? "carrousels" : "videos";
+}
+
 function setTab(tab) {
-  currentTab = tab;
   document.getElementById("tabVideos").classList.toggle("on", tab === "videos");
   document.getElementById("tabCarrousels").classList.toggle("on", tab === "carrousels");
   document.getElementById("panel").hidden = true;
@@ -133,7 +170,6 @@ function normalizePhoto(p) {
   const imgs = p.images ?? p.slideshow_images ?? p.imagePost?.images ?? p.imagePostInfo?.displayImages ?? [];
   const first = imgs[0];
   const firstUrl = typeof first === "string" ? first : (first?.url ?? first?.url_list?.[0] ?? first?.displayImage?.url_list?.[0] ?? "");
-  const text = p.text ?? p.desc ?? p.caption ?? "";
   return {
     views: Number(p.playCount ?? p.stats?.playCount ?? p.plays ?? 0),
     likes: Number(p.diggCount ?? p.stats?.diggCount ?? p.likeCount ?? p.likes ?? 0),
@@ -141,7 +177,7 @@ function normalizePhoto(p) {
     count: imgs.length,
     url: p.webVideoUrl ?? p.url ?? p.shareUrl ?? "#",
     cover: firstUrl || p.cover || p.thumbnail || "",
-    text
+    text: p.text ?? p.desc ?? p.caption ?? ""
   };
 }
 
@@ -166,9 +202,10 @@ function render(list, tab) {
   const results = document.getElementById("results");
   results.innerHTML = '<div class="grid">' + list.map((v) => {
     const idx = allVideos.indexOf(v);
+    const sameLength = tab === "videos" && myVideo && Math.abs(v.duration - myVideo.duration) <= 3;
     const lines = tab === "carrousels"
       ? `<span>👁 ${fmtNum(v.views)}</span><span>🖼 ${v.count}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`
-      : `<span>👁 ${fmtNum(v.views)}</span><span>${fmtDuration(v.duration)}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`;
+      : `<span>👁 ${fmtNum(v.views)}</span><span>${fmtDuration(v.duration)}${sameLength ? " ✓" : ""}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`;
     const btn = tab === "videos" ? `<button class="analyse" onclick="analyse(${idx})">Analyser le style</button>` : "";
     return `
     <div class="tile">
