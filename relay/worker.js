@@ -1,35 +1,53 @@
-// Relais sécurisé : les clés restent dans Cloudflare (secrets), jamais dans la page.
-// Autorise seulement ta page GitHub Pages.
+// Relais sécurisé : les clés restent dans Cloudflare (variables), jamais dans la page.
+// Variables : SHOTSTACK_KEY, SHOTSTACK_ENV ("stage" pour tester, "v1" pour le vrai), AI_KEY (Vercel AI Gateway).
 const ALLOWED_ORIGIN = "https://uba-babu92.github.io";
 
 export default {
   async fetch(request, env) {
     const cors = {
       "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     };
-    if (request.headers.get("Origin") !== ALLOWED_ORIGIN && request.method !== "OPTIONS") {
-      return new Response("Origine non autorisée", { status: 403 });
-    }
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
 
     const url = new URL(request.url);
-    const body = await request.text();
-    let upstream;
+    const p = url.pathname;
 
-    if (url.pathname === "/mistral") {
-      upstream = await fetch("https://api.mistral.ai/v1/chat/completions", {
+    // Test simple dans le navigateur : ouvrir /ping
+    if (p === "/ping") {
+      return Response.json({
+        ok: true,
+        shotstack: !!env.SHOTSTACK_KEY,
+        ia: !!env.AI_KEY,
+        mode: env.SHOTSTACK_ENV || "stage",
+      }, { headers: cors });
+    }
+
+    if (request.headers.get("Origin") !== ALLOWED_ORIGIN) {
+      return new Response("Origine non autorisée", { status: 403 });
+    }
+
+    const stage = env.SHOTSTACK_ENV || "stage";
+    const shot = { "x-api-key": env.SHOTSTACK_KEY, "Content-Type": "application/json" };
+    const body = request.method === "POST" ? await request.text() : undefined;
+    let m, upstream;
+
+    if (p === "/ai" && request.method === "POST") {
+      upstream = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
         method: "POST",
-        headers: { "Authorization": `Bearer ${env.MISTRAL_KEY}`, "Content-Type": "application/json" },
+        headers: { "Authorization": `Bearer ${env.AI_KEY}`, "Content-Type": "application/json" },
         body,
       });
-    } else if (url.pathname === "/shotstack/render") {
-      upstream = await fetch(`https://api.shotstack.io/edit/${env.SHOTSTACK_ENV || "stage"}/render`, {
-        method: "POST",
-        headers: { "x-api-key": env.SHOTSTACK_KEY, "Content-Type": "application/json" },
-        body,
-      });
+    } else if (p === "/shotstack/upload" && request.method === "POST") {
+      // Donne une adresse où la page envoie la vidéo
+      upstream = await fetch(`https://api.shotstack.io/ingest/${stage}/upload`, { method: "POST", headers: shot });
+    } else if ((m = p.match(/^\/shotstack\/source\/([\w-]+)$/))) {
+      upstream = await fetch(`https://api.shotstack.io/ingest/${stage}/sources/${m[1]}`, { headers: shot });
+    } else if (p === "/shotstack/render" && request.method === "POST") {
+      upstream = await fetch(`https://api.shotstack.io/edit/${stage}/render`, { method: "POST", headers: shot, body });
+    } else if ((m = p.match(/^\/shotstack\/render\/([\w-]+)$/))) {
+      upstream = await fetch(`https://api.shotstack.io/edit/${stage}/render/${m[1]}`, { headers: shot });
     } else {
       return new Response("Introuvable", { status: 404, headers: cors });
     }
