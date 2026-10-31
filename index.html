@@ -89,7 +89,7 @@
 <!-- ===== MONTAGE ===== -->
 <section id="secMontage" class="hidden">
   <textarea id="montagePrompt">Sous-titres, texte à l'écran en gros, sans musique.</textarea>
-  <input id="montageFile" type="file" accept="video/*">
+  <input id="montageFile" type="file" accept="video/*" multiple>
   <div id="montageInfo" class="small"></div>
   <button class="main" id="montageGo" disabled>Lancer le montage</button>
   <div id="montageStatus" class="small">Choisis une vidéo, puis appuie sur le bouton.</div>
@@ -172,9 +172,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const mStatus = t => document.getElementById("montageStatus").textContent = t;
 
 document.getElementById("montageFile").addEventListener("change", e => {
-  const f = e.target.files[0];
-  document.getElementById("montageGo").disabled = !f;
-  document.getElementById("montageInfo").textContent = f ? `Vidéo : ${f.name} (${(f.size / 1e6).toFixed(1)} Mo)` : "";
+  const fs = [...e.target.files];
+  document.getElementById("montageGo").disabled = !fs.length;
+  document.getElementById("montageInfo").innerHTML = fs.length
+    ? `<b>${fs.length} vidéo(s), collées dans cet ordre :</b><br>` + fs.map((f, i) => `${i + 1}. ${escapeHtml(f.name)} (${(f.size / 1e6).toFixed(1)} Mo)`).join("<br>")
+    : "";
 });
 
 async function relay(path, data) {
@@ -187,40 +189,42 @@ async function relay(path, data) {
 }
 
 document.getElementById("montageGo").addEventListener("click", async () => {
-  const f = document.getElementById("montageFile").files[0];
+  const files = [...document.getElementById("montageFile").files];
   const btn = document.getElementById("montageGo");
-  if (!f) return;
+  if (!files.length) return;
   btn.disabled = true;
   document.getElementById("montageResult").innerHTML = "";
   try {
-    // 1. Envoi de la vidéo chez Shotstack
-    mStatus("1/4 Préparation de l'envoi…");
-    const up = await relay("/shotstack/upload", {});
-    mStatus("2/4 Envoi de la vidéo…");
-    const put = await fetch(up.data.attributes.url, { method: "PUT", body: new Blob([f]) });
-    if (!put.ok) throw new Error("envoi vidéo : " + put.status);
-
-    // 2. Attendre que Shotstack ait reçu la vidéo
-    let src;
-    for (let i = 0; i < 120; i++) {
-      await sleep(3000);
-      const s = await relay("/shotstack/source/" + up.data.id);
-      const a = s.data.attributes;
-      mStatus("2/4 Réception par Shotstack : " + a.status);
-      if (a.status === "ready") { src = a.source; break; }
-      if (a.status === "failed") throw new Error("Shotstack n'a pas pu lire la vidéo");
+    // 1-2. Envoi de chaque vidéo chez Shotstack
+    const srcs = [];
+    for (let n = 0; n < files.length; n++) {
+      const tag = `vidéo ${n + 1}/${files.length}`;
+      mStatus(`1/4 Préparation (${tag})…`);
+      const up = await relay("/shotstack/upload", {});
+      mStatus(`2/4 Envoi (${tag})…`);
+      const put = await fetch(up.data.attributes.url, { method: "PUT", body: new Blob([files[n]]) });
+      if (!put.ok) throw new Error("envoi vidéo : " + put.status);
+      let src;
+      for (let i = 0; i < 120; i++) {
+        await sleep(3000);
+        const a = (await relay("/shotstack/source/" + up.data.id)).data.attributes;
+        mStatus(`2/4 Réception (${tag}) : ${a.status}`);
+        if (a.status === "ready") { src = a.source; break; }
+        if (a.status === "failed") throw new Error(`Shotstack n'a pas pu lire la ${tag}`);
+      }
+      if (!src) throw new Error("trop long, réessaie");
+      srcs.push(src);
     }
-    if (!src) throw new Error("trop long, réessaie");
 
-    // 3. Demande du montage : vidéo + gros sous-titres auto, pas de musique
+    // 3. Montage : vidéos à la suite + gros sous-titres auto, pas de musique
     mStatus("3/4 Montage demandé…");
+    const font = { family: "Montserrat ExtraBold", size: 64, color: "#ffffff", lineHeight: 0.9 };
+    const background = { color: "#000000", opacity: 0.6, padding: 20, borderRadius: 16 };
     const edit = {
       timeline: { tracks: [
-        { clips: [{ asset: { type: "caption", src: "alias://main",
-            font: { family: "Montserrat ExtraBold", size: 64, color: "#ffffff", lineHeight: 0.9 },
-            background: { color: "#000000", opacity: 0.6, padding: 20, borderRadius: 16 } },
-          start: 0, length: "end", position: "center" }] },
-        { clips: [{ asset: { type: "video", src }, start: 0, length: "auto", alias: "main" }] }
+        { clips: srcs.map((_, i) => ({ asset: { type: "caption", src: `alias://v${i}`, font, background },
+            start: `alias://v${i}`, length: `alias://v${i}`, position: "center" })) },
+        { clips: srcs.map((src, i) => ({ asset: { type: "video", src }, start: i ? "auto" : 0, length: "auto", alias: `v${i}` })) }
       ] },
       output: { format: "mp4", size: { width: 1080, height: 1920 } }
     };
