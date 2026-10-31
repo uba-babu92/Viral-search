@@ -26,6 +26,11 @@
   #myInfo { color: #facc15; margin: 6px 0 8px; font-size: 13px; }
   #status { margin: 12px 0; font-size: 14px; color: #aaa; }
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+  .rush { display: flex; align-items: center; gap: 8px; background: #1c1c1c; border-radius: 8px; padding: 6px; margin: 6px 0; }
+  .rush video { width: 48px; height: 64px; object-fit: cover; border-radius: 4px; background: #000; flex-shrink: 0; pointer-events: none; }
+  .rush .n { font-weight: bold; width: 18px; text-align: center; }
+  .rush .name { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rush button { width: 34px; height: 34px; border: 1px solid #333; border-radius: 6px; background: #111; color: #eee; font-size: 16px; padding: 0; }
   #apiWarn { color: #f87171; font-size: 12px; margin: -6px 0 8px; }
   .msg { background: #1c1c1c; border-radius: 10px; padding: 12px; margin: 8px 0; font-size: 14px; white-space: pre-wrap; }
   .msg.me { background: #1e3a8a; }
@@ -89,7 +94,8 @@
 <!-- ===== MONTAGE ===== -->
 <section id="secMontage" class="hidden">
   <textarea id="montagePrompt">Sous-titres, texte à l'écran en gros, sans musique.</textarea>
-  <input id="montageFile" type="file" accept="video/*" multiple>
+  <input id="montageFile" type="file" accept="video/*" multiple class="hidden">
+  <button class="main" id="montageAdd" style="background:#1c1c1c;border:1px solid #333;margin-bottom:8px">+ Ajouter des rushs</button>
   <div id="montageInfo" class="small"></div>
   <button class="main" id="montageGo" disabled>Lancer le montage</button>
   <div id="montageStatus" class="small">Choisis une vidéo, puis appuie sur le bouton.</div>
@@ -171,13 +177,36 @@ document.getElementById("query").addEventListener("keydown", e => { if (e.key ==
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const mStatus = t => document.getElementById("montageStatus").textContent = t;
 
+// Liste des rushs, dans l'ordre du montage
+let rushes = [];
+document.getElementById("montageAdd").addEventListener("click", () => document.getElementById("montageFile").click());
 document.getElementById("montageFile").addEventListener("change", e => {
-  const fs = [...e.target.files];
-  document.getElementById("montageGo").disabled = !fs.length;
-  document.getElementById("montageInfo").innerHTML = fs.length
-    ? `<b>${fs.length} vidéo(s), collées dans cet ordre :</b><br>` + fs.map((f, i) => `${i + 1}. ${escapeHtml(f.name)} (${(f.size / 1e6).toFixed(1)} Mo)`).join("<br>")
-    : "";
+  rushes.push(...[...e.target.files].map(f => ({ file: f, url: URL.createObjectURL(f) })));
+  e.target.value = ""; // permet de rajouter d'autres rushs ensuite
+  drawRushes();
 });
+
+function drawRushes() {
+  const box = document.getElementById("montageInfo");
+  document.getElementById("montageGo").disabled = !rushes.length;
+  box.innerHTML = rushes.length ? `<b>${rushes.length} rush(s). Le n°1 passe en premier.</b>` : "";
+  rushes.forEach((r, i) => {
+    const row = document.createElement("div");
+    row.className = "rush";
+    row.innerHTML = `<span class="n">${i + 1}</span>
+      <video src="${r.url}#t=0.1" muted playsinline preload="metadata"></video>
+      <span class="name">${escapeHtml(r.file.name)}<br>${(r.file.size / 1e6).toFixed(1)} Mo</span>
+      <button data-a="up">⬆️</button><button data-a="down">⬇️</button><button data-a="del">❌</button>`;
+    row.querySelectorAll("button").forEach(b => b.onclick = () => {
+      const a = b.dataset.a;
+      if (a === "up" && i > 0) [rushes[i - 1], rushes[i]] = [rushes[i], rushes[i - 1]];
+      if (a === "down" && i < rushes.length - 1) [rushes[i + 1], rushes[i]] = [rushes[i], rushes[i + 1]];
+      if (a === "del") { URL.revokeObjectURL(r.url); rushes.splice(i, 1); }
+      drawRushes();
+    });
+    box.appendChild(row);
+  });
+}
 
 async function relay(path, data) {
   const res = await fetch(RELAY + path, data === undefined ? {} : {
@@ -189,7 +218,7 @@ async function relay(path, data) {
 }
 
 document.getElementById("montageGo").addEventListener("click", async () => {
-  const files = [...document.getElementById("montageFile").files];
+  const files = rushes.map(r => r.file);
   const btn = document.getElementById("montageGo");
   if (!files.length) return;
   btn.disabled = true;
