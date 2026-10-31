@@ -27,7 +27,10 @@
   #status { margin: 12px 0; font-size: 14px; color: #aaa; }
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
   .rush { display: flex; align-items: center; gap: 8px; background: #1c1c1c; border-radius: 8px; padding: 6px; margin: 6px 0; }
-  .rush video { width: 48px; height: 64px; object-fit: cover; border-radius: 4px; background: #000; flex-shrink: 0; pointer-events: none; }
+  .rush .th { width: 48px; height: 64px; object-fit: cover; border-radius: 4px; background: #000; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+  .rush { transition: transform .15s; }
+  .rush.drag { transition: none; position: relative; z-index: 2; background: #2a2a2a; box-shadow: 0 6px 20px #000a; }
+  .rush .grip { width: 40px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 22px; color: #aaa; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
   .rush .n { font-weight: bold; width: 18px; text-align: center; }
   .rush .name { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rush button { width: 34px; height: 34px; border: 1px solid #333; border-radius: 6px; background: #111; color: #eee; font-size: 16px; padding: 0; }
@@ -184,28 +187,110 @@ document.getElementById("montageFile").addEventListener("change", e => {
   rushes.push(...[...e.target.files].map(f => ({ file: f, url: URL.createObjectURL(f) })));
   e.target.value = ""; // permet de rajouter d'autres rushs ensuite
   drawRushes();
+  makeThumbs();
 });
+
+// Petite image de chaque rush (dessinée une seule fois)
+async function makeThumb(r) {
+  if (r.thumb !== undefined) return;
+  r.thumb = null;
+  try {
+    const v = document.createElement("video");
+    v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = r.url;
+    await new Promise((ok, ko) => { v.onloadeddata = ok; v.onerror = ko; setTimeout(ko, 8000); v.load(); });
+    v.currentTime = 0.1;
+    await new Promise(ok => { v.onseeked = ok; setTimeout(ok, 3000); });
+    const c = document.createElement("canvas");
+    c.width = 96; c.height = Math.round(96 * (v.videoHeight / v.videoWidth || 16 / 9));
+    c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+    r.thumb = c.toDataURL("image/jpeg", 0.7);
+    v.removeAttribute("src"); v.load();
+  } catch (e) { /* pas d'image : on garde l'icône */ }
+}
+async function makeThumbs() {
+  for (const r of rushes) {
+    if (r.thumb === undefined) { await makeThumb(r); drawRushes(); }
+  }
+}
 
 function drawRushes() {
   const box = document.getElementById("montageInfo");
   document.getElementById("montageGo").disabled = !rushes.length;
-  box.innerHTML = rushes.length ? `<b>${rushes.length} rush(s). Le n°1 passe en premier.</b>` : "";
+  box.innerHTML = rushes.length ? `<b>${rushes.length} rush(s). Glisse ☰ pour changer l'ordre.</b>` : "";
   rushes.forEach((r, i) => {
     const row = document.createElement("div");
     row.className = "rush";
     row.innerHTML = `<span class="n">${i + 1}</span>
-      <video src="${r.url}#t=0.1" muted playsinline preload="metadata"></video>
+      ${r.thumb ? `<img class="th" src="${r.thumb}" alt="">` : `<span class="th">🎬</span>`}
       <span class="name">${escapeHtml(r.file.name)}<br>${(r.file.size / 1e6).toFixed(1)} Mo</span>
-      <button data-a="up">⬆️</button><button data-a="down">⬇️</button><button data-a="del">❌</button>`;
-    row.querySelectorAll("button").forEach(b => b.onclick = () => {
-      const a = b.dataset.a;
-      if (a === "up" && i > 0) [rushes[i - 1], rushes[i]] = [rushes[i], rushes[i - 1]];
-      if (a === "down" && i < rushes.length - 1) [rushes[i + 1], rushes[i]] = [rushes[i], rushes[i + 1]];
-      if (a === "del") { URL.revokeObjectURL(r.url); rushes.splice(i, 1); }
-      drawRushes();
-    });
+      <button class="del">❌</button><span class="grip">☰</span>`;
+    row.querySelector(".del").onclick = () => { URL.revokeObjectURL(r.url); rushes.splice(i, 1); drawRushes(); };
+    row.querySelector(".grip").addEventListener("pointerdown", e => startDrag(e, row, i));
     box.appendChild(row);
   });
+}
+
+// Glisser-déposer avec la poignée ☰
+function startDrag(e, row, from) {
+  e.preventDefault();
+  const box = document.getElementById("montageInfo");
+  const rows = [...box.querySelectorAll(".rush")];
+  const startY = e.clientY;
+  let to = from;
+  row.classList.add("drag");
+  const grip = e.target;
+  grip.setPointerCapture(e.pointerId);
+  const move = ev => {
+    row.style.transform = `translateY(${ev.clientY - startY}px)`;
+    to = from;
+    rows.forEach((o, j) => {
+      if (o === row) return;
+      const b = o.getBoundingClientRect(), mid = b.top + b.height / 2;
+      if (j > from && ev.clientY > mid) to = Math.max(to, j);
+      if (j < from && ev.clientY < mid) to = Math.min(to, j);
+    });
+    rows.forEach((o, j) => {
+      if (o === row) return;
+      const h = row.offsetHeight + 6;
+      o.style.transform = (from < to && j > from && j <= to) ? `translateY(${-h}px)`
+        : (from > to && j < from && j >= to) ? `translateY(${h}px)` : "";
+    });
+    // défile si on approche du bord de l'écran
+    if (ev.clientY < 60) window.scrollBy(0, -10);
+    if (ev.clientY > innerHeight - 60) window.scrollBy(0, 10);
+  };
+  const end = () => {
+    grip.removeEventListener("pointermove", move);
+    grip.removeEventListener("pointerup", end);
+    grip.removeEventListener("pointercancel", end);
+    if (to !== from) rushes.splice(to, 0, rushes.splice(from, 1)[0]);
+    drawRushes();
+  };
+  grip.addEventListener("pointermove", move);
+  grip.addEventListener("pointerup", end);
+  grip.addEventListener("pointercancel", end);
+}
+
+// Demande un rendu à Shotstack et attend la vidéo finale
+async function render(srcs, captions) {
+  const font = { family: "Montserrat ExtraBold", size: 64, color: "#ffffff", lineHeight: 0.9 };
+  const background = { color: "#000000", opacity: 0.6, padding: 20, borderRadius: 16 };
+  const videoTrack = { clips: srcs.map((src, i) => ({ asset: { type: "video", src }, start: i ? "auto" : 0, length: "auto", alias: `v${i}` })) };
+  const captionTrack = { clips: srcs.map((_, i) => ({ asset: { type: "caption", src: `alias://v${i}`, font, background },
+    start: `alias://v${i}`, length: `alias://v${i}`, position: "center" })) };
+  mStatus("3/4 Montage demandé" + (captions ? " (avec sous-titres)…" : "…"));
+  const r = await relay("/shotstack/render", {
+    timeline: { tracks: captions ? [captionTrack, videoTrack] : [videoTrack] },
+    output: { format: "mp4", size: { width: 1080, height: 1920 } }
+  });
+  for (let i = 0; i < 200; i++) {
+    await sleep(4000);
+    const st = (await relay("/shotstack/render/" + r.response.id)).response;
+    mStatus("4/4 Rendu : " + st.status);
+    if (st.status === "done") return st.url;
+    if (st.status === "failed") throw new Error(st.error || "rendu échoué");
+  }
+  throw new Error("rendu trop long, réessaie");
 }
 
 async function relay(path, data) {
@@ -219,6 +304,8 @@ async function relay(path, data) {
 
 document.getElementById("montageGo").addEventListener("click", async () => {
   const files = rushes.map(r => r.file);
+  const list = rushes.slice();
+  let noCaption = false;
   const btn = document.getElementById("montageGo");
   if (!files.length) return;
   btn.disabled = true;
@@ -228,6 +315,7 @@ document.getElementById("montageGo").addEventListener("click", async () => {
     const srcs = [];
     for (let n = 0; n < files.length; n++) {
       const tag = `vidéo ${n + 1}/${files.length}`;
+      if (list[n].src) { srcs.push(list[n].src); continue; } // déjà envoyée avant
       mStatus(`1/4 Préparation (${tag})…`);
       const up = await relay("/shotstack/upload", {});
       mStatus(`2/4 Envoi (${tag})…`);
@@ -242,39 +330,25 @@ document.getElementById("montageGo").addEventListener("click", async () => {
         if (a.status === "failed") throw new Error(`Shotstack n'a pas pu lire la ${tag}`);
       }
       if (!src) throw new Error("trop long, réessaie");
+      list[n].src = src;
       srcs.push(src);
     }
 
-    // 3. Montage : vidéos à la suite + gros sous-titres auto, pas de musique
-    mStatus("3/4 Montage demandé…");
-    const font = { family: "Montserrat ExtraBold", size: 64, color: "#ffffff", lineHeight: 0.9 };
-    const background = { color: "#000000", opacity: 0.6, padding: 20, borderRadius: 16 };
-    const edit = {
-      timeline: { tracks: [
-        { clips: srcs.map((_, i) => ({ asset: { type: "caption", src: `alias://v${i}`, font, background },
-            start: `alias://v${i}`, length: `alias://v${i}`, position: "center" })) },
-        { clips: srcs.map((src, i) => ({ asset: { type: "video", src }, start: i ? "auto" : 0, length: "auto", alias: `v${i}` })) }
-      ] },
-      output: { format: "mp4", size: { width: 1080, height: 1920 } }
-    };
-    const r = await relay("/shotstack/render", edit);
-    const id = r.response.id;
-
-    // 4. Attendre la vidéo finale
-    for (let i = 0; i < 200; i++) {
-      await sleep(4000);
-      const st = (await relay("/shotstack/render/" + id)).response;
-      mStatus("4/4 Rendu : " + st.status);
-      if (st.status === "done") {
-        mStatus("✅ Terminé !");
-        document.getElementById("montageResult").innerHTML =
-          `<video src="${st.url}" controls playsinline style="width:100%;border-radius:8px"></video>
-           <a class="small" href="${st.url}" target="_blank" rel="noopener">Ouvrir / télécharger la vidéo</a>`;
-        return;
-      }
-      if (st.status === "failed") throw new Error(st.error || "rendu échoué");
+    // 3-4. Montage, d'abord avec sous-titres. Si pas de voix : on refait sans.
+    let url;
+    try {
+      url = await render(srcs, true);
+    } catch (e) {
+      if (!/spoken|speech|audio/i.test(e.message)) throw e;
+      mStatus("Pas de voix trouvée : je refais le montage sans sous-titres…");
+      url = await render(srcs, false);
+      noCaption = true;
     }
-    throw new Error("rendu trop long, réessaie");
+    mStatus(noCaption ? "✅ Terminé (sans sous-titres : pas de voix détectée)." : "✅ Terminé !");
+    document.getElementById("montageResult").innerHTML =
+      `<video src="${url}" controls playsinline style="width:100%;border-radius:8px"></video>
+       <a class="small" href="${url}" target="_blank" rel="noopener">Ouvrir / télécharger la vidéo</a>`;
+    return;
   } catch (e) {
     mStatus("❌ " + e.message);
   } finally {
