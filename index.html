@@ -26,6 +26,7 @@
   #myInfo { color: #facc15; margin: 6px 0 8px; font-size: 13px; }
   #status { margin: 12px 0; font-size: 14px; color: #aaa; }
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+  #apiWarn { color: #f87171; font-size: 12px; margin: -6px 0 8px; }
   .msg { background: #1c1c1c; border-radius: 10px; padding: 12px; margin: 8px 0; font-size: 14px; white-space: pre-wrap; }
   .msg.me { background: #1e3a8a; }
   .msg button { margin-top: 8px; padding: 6px 10px; border: 1px solid #444; border-radius: 6px; background: #111; color: #eee; }
@@ -43,6 +44,7 @@
 </head>
 <body>
 <h1>Viral Finder (proto)</h1>
+<div id="apiWarn" class="hidden"></div>
 
 <div class="rubriques">
   <button id="rubRecherche" class="on">Recherche</button>
@@ -99,6 +101,18 @@ const VIDEO_ACTOR = "mu0i~tiktok-search-scraper";
 const PHOTO_ACTOR = "scrapingmonkey~tiktok-scraper";
 const RELAY = "https://viral-relais.v5nhskv7zy.workers.dev";
 localStorage.removeItem("apifyToken"); // ancienne clé, plus utilisée
+
+// Petit avertissement rouge quand un service n'a plus de crédit
+const blocked = new Set();
+function checkCredit(service, status, text) {
+  const t = String(text).toLowerCase();
+  if (status === 402 || status === 429 || /credit|quota|insufficient|limit exceeded|usage limit|payment|balance/.test(t)) {
+    blocked.add(service);
+    const w = document.getElementById("apiWarn");
+    w.textContent = "⚠ Plus de crédit : " + [...blocked].join(", ");
+    w.classList.remove("hidden");
+  }
+}
 
 let items = [];
 let myVideo = null;
@@ -168,7 +182,7 @@ async function relay(path, data) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
   });
   const txt = await res.text();
-  if (!res.ok) throw new Error(`relais ${path} : ${res.status} ${txt.slice(0, 150)}`);
+  if (!res.ok) { checkCredit("Shotstack", res.status, txt); throw new Error(`relais ${path} : ${res.status} ${txt.slice(0, 150)}`); }
   return JSON.parse(txt);
 }
 
@@ -274,7 +288,7 @@ document.getElementById("scriptGo").addEventListener("click", async () => {
       body: JSON.stringify({ model: AI_MODEL, messages: chat })
     });
     const t = await res.text();
-    if (!res.ok) throw new Error(res.status + " " + t.slice(0, 150));
+    if (!res.ok) { checkCredit("IA", res.status, t); throw new Error(res.status + " " + t.slice(0, 150)); }
     const answer = JSON.parse(t).choices[0].message.content;
     chat.push({ role: "assistant", content: answer });
     addMsg(answer, false);
@@ -295,7 +309,11 @@ async function runActor(actor, input) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)
   });
-  if (!res.ok) throw new Error(actor + " : erreur " + res.status + " " + (await res.text()).slice(0, 150));
+  if (!res.ok) {
+    const t = await res.text();
+    checkCredit("Apify", res.status, t);
+    throw new Error(actor + " : erreur " + res.status + " " + t.slice(0, 150));
+  }
   return res.json();
 }
 
