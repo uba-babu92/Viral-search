@@ -41,6 +41,7 @@
   .tile { position: relative; aspect-ratio: 9 / 16; background: #222; border-radius: 6px; overflow: hidden; display: block; }
   .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .overlay { position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px #000; }
+  .adapt { position: absolute; bottom: 36px; left: 6px; right: 6px; padding: 5px; font-size: 12px; border: 0; border-radius: 6px; background: rgba(59,130,246,.85); color: #fff; }
   .analyse { position: absolute; bottom: 6px; left: 6px; right: 6px; padding: 5px; font-size: 12px; border: 0; border-radius: 6px; background: rgba(0,0,0,.7); color: #fff; }
   #panel { background: #1c1c1c; border-radius: 10px; padding: 12px; margin: 12px 0; font-size: 14px; line-height: 1.5; }
   #panel h2 { font-size: 16px; margin: 0 0 8px; }
@@ -87,11 +88,25 @@
 
 <!-- ===== SCRIPT (vide pour l'instant) ===== -->
 <section id="secScript" class="hidden">
-  <textarea id="scriptText" placeholder="Colle ton script ici"></textarea>
-  <input id="scriptAsk" type="text" placeholder="Ce que tu veux (ex : plus court, style TikTok, pour vendre)">
-  <button class="main" id="scriptGo">Adapter</button>
+  <div class="modes">
+    <button id="modeCreer" class="on">✍️ Créer</button>
+    <button id="modeAdapter">🔁 Adapter</button>
+  </div>
+  <div id="boxCreer">
+    <textarea id="ideaText" placeholder="Ton idée (ex : vlog de vacances dans les Vosges avec mon pote)"></textarea>
+    <button class="main" id="creerGo">Créer mon script</button>
+  </div>
+  <div id="boxAdapter" class="hidden">
+    <textarea id="viralText" placeholder="Texte de la vidéo virale (appuie sur « Adapter » sur une vidéo dans Recherche, ou colle-le ici)"></textarea>
+    <input id="mySubject" type="text" placeholder="Ton sujet à toi (ex : mon vlog dans les Vosges)">
+    <button class="main" id="adapterGo">Adapter à ma vidéo</button>
+  </div>
   <div id="scriptStatus" class="small"></div>
   <div id="chat"></div>
+  <div id="replyBox" class="hidden">
+    <div class="row"><input id="replyText" type="text" placeholder="Ta réponse ou correction (ex : plus court)"><button class="plus" id="replyGo">➤</button></div>
+    <div class="small"><a href="#" id="newScript" style="color:#888">Recommencer à zéro</a></div>
+  </div>
 </section>
 
 <!-- ===== MONTAGE ===== -->
@@ -272,7 +287,7 @@ function startDrag(e, row, from) {
 }
 
 // Demande un rendu à Shotstack et attend la vidéo finale
-async function render(srcs, captions) {
+async function shotRender(srcs, captions) {
   const font = { family: "Montserrat ExtraBold", size: 64, color: "#ffffff", lineHeight: 0.9 };
   const background = { color: "#000000", opacity: 0.6, padding: 20, borderRadius: 16 };
   const videoTrack = { clips: srcs.map((src, i) => ({ asset: { type: "video", src }, start: i ? "auto" : 0, length: "auto", alias: `v${i}` })) };
@@ -337,11 +352,11 @@ document.getElementById("montageGo").addEventListener("click", async () => {
     // 3-4. Montage, d'abord avec sous-titres. Si pas de voix : on refait sans.
     let url;
     try {
-      url = await render(srcs, true);
+      url = await shotRender(srcs, true);
     } catch (e) {
       if (!/spoken|speech|audio/i.test(e.message)) throw e;
       mStatus("Pas de voix trouvée : je refais le montage sans sous-titres…");
-      url = await render(srcs, false);
+      url = await shotRender(srcs, false);
       noCaption = true;
     }
     mStatus(noCaption ? "✅ Terminé (sans sous-titres : pas de voix détectée)." : "✅ Terminé !");
@@ -356,9 +371,52 @@ document.getElementById("montageGo").addEventListener("click", async () => {
   }
 });
 
-// ----- Script : petit chatbot IA (Vercel AI Gateway via le relais) -----
+// ----- Script : coach d'écriture IA (via le relais) -----
 const AI_MODEL = "mistral/mistral-small";
-const chat = [{ role: "system", content: "Tu es un expert en scripts de vidéos courtes virales (TikTok, Reels). Tu adaptes le script de l'utilisateur selon sa demande. Réponds en français, avec le script prêt à lire : accroche forte dans les 3 premières secondes, phrases courtes, texte à l'écran entre [crochets]. Pas de blabla autour." }];
+const RULES = `Règles d'un bon script de vidéo courte (TikTok, Reels) :
+- Accroche dans les 2 premières secondes : une phrase choc, une question ou une promesse.
+- Rythme rapide : phrases courtes, une idée par plan, une relance toutes les 3 à 5 secondes.
+- Une vraie progression (début, tension ou surprise, chute).
+- Fin qui pousse à commenter, partager ou suivre.
+- Durée visée : 20 à 45 secondes, sauf demande contraire.
+Format de réponse, en français, sans blabla autour :
+PLAN 1 (0-3 s) — Image : ce qu'on filme / Voix : ce qu'on dit / [Texte à l'écran]
+PLAN 2 …
+Puis une ligne « Légende : » avec la légende du post et 3 à 5 hashtags.`;
+const PROMPTS = {
+  creer: `Tu es un coach d'écriture expert en vidéos virales. L'utilisateur te donne une idée, souvent floue. Tu l'aides à en faire un script propre et rythmé. Si l'idée manque vraiment d'infos, pose d'abord 1 ou 2 questions courtes, sinon écris directement le script. Après le script, propose en une ligne une amélioration possible. Tu tutoies, tu es motivant et simple.\n\n${RULES}`,
+  adapter: `Tu es un coach d'écriture expert en vidéos virales. On te donne le texte d'une vidéo virale et le sujet de l'utilisateur. Commence par 2 lignes « Pourquoi elle marche : » (structure, accroche, rythme). Puis réécris un script pour le sujet de l'utilisateur en gardant la même structure et le même rythme, sans copier les phrases. Tu tutoies, tu es simple.\n\n${RULES}`
+};
+let scriptMode = "creer";
+let chat = [];
+
+function setScriptMode(m) {
+  scriptMode = m;
+  document.getElementById("modeCreer").classList.toggle("on", m === "creer");
+  document.getElementById("modeAdapter").classList.toggle("on", m === "adapter");
+  document.getElementById("boxCreer").classList.toggle("hidden", m !== "creer");
+  document.getElementById("boxAdapter").classList.toggle("hidden", m !== "adapter");
+  resetChat();
+}
+function resetChat() {
+  chat = [];
+  document.getElementById("chat").innerHTML = "";
+  document.getElementById("replyBox").classList.add("hidden");
+  document.getElementById("scriptStatus").textContent = "";
+}
+document.getElementById("modeCreer").onclick = () => setScriptMode("creer");
+document.getElementById("modeAdapter").onclick = () => setScriptMode("adapter");
+document.getElementById("newScript").onclick = e => { e.preventDefault(); resetChat(); };
+
+// Depuis Recherche : envoie la vidéo virale dans « Adapter »
+function adaptVideo(i) {
+  const v = items[i];
+  setRubrique("script");
+  setScriptMode("adapter");
+  document.getElementById("viralText").value =
+    `Description : ${v.text || "(vide)"}\nDurée : ${fmtDuration(v.duration) || "?"} · Vues : ${fmtNum(v.views)}${v.music ? " · Son : " + v.music : ""}\nLien : ${v.url}`;
+  document.getElementById("mySubject").focus();
+}
 
 function addMsg(text, me) {
   const d = document.createElement("div");
@@ -375,20 +433,13 @@ function addMsg(text, me) {
   d.scrollIntoView({ behavior: "smooth" });
 }
 
-document.getElementById("scriptGo").addEventListener("click", async () => {
-  const txt = document.getElementById("scriptText");
-  const ask = document.getElementById("scriptAsk");
-  const btn = document.getElementById("scriptGo");
+async function askAI(content, shown) {
   const st = document.getElementById("scriptStatus");
-  const first = chat.length === 1;
-  if (first && !txt.value.trim()) { st.textContent = "Colle d'abord ton script."; return; }
-  if (!first && !ask.value.trim()) { st.textContent = "Écris ta correction dans la petite case."; return; }
-  const content = first ? `Mon script :\n${txt.value.trim()}\n\nCe que je veux : ${ask.value.trim() || "rends-le plus viral"}` : ask.value.trim();
+  if (!chat.length) chat.push({ role: "system", content: PROMPTS[scriptMode] });
   chat.push({ role: "user", content });
-  addMsg(first ? (ask.value.trim() || "Rends-le plus viral") : content, true);
-  ask.value = "";
-  btn.disabled = true;
-  st.textContent = "L'IA écrit…";
+  addMsg(shown, true);
+  document.querySelectorAll("#creerGo, #adapterGo, #replyGo").forEach(b => b.disabled = true);
+  st.textContent = "Le coach écrit…";
   try {
     const res = await fetch(RELAY + "/ai", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -399,15 +450,37 @@ document.getElementById("scriptGo").addEventListener("click", async () => {
     const answer = JSON.parse(t).choices[0].message.content;
     chat.push({ role: "assistant", content: answer });
     addMsg(answer, false);
-    st.textContent = "Pas satisfait ? Écris une correction (ex : encore plus court) et appuie sur Adapter.";
-    btn.textContent = "Envoyer la correction";
+    st.textContent = "";
+    document.getElementById("replyBox").classList.remove("hidden");
   } catch (e) {
     chat.pop();
     st.textContent = "❌ " + e.message;
   } finally {
-    btn.disabled = false;
+    document.querySelectorAll("#creerGo, #adapterGo, #replyGo").forEach(b => b.disabled = false);
   }
-});
+}
+
+document.getElementById("creerGo").onclick = () => {
+  const idea = document.getElementById("ideaText").value.trim();
+  if (!idea) { document.getElementById("scriptStatus").textContent = "Écris d'abord ton idée."; return; }
+  resetChat();
+  askAI("Mon idée : " + idea, idea);
+};
+document.getElementById("adapterGo").onclick = () => {
+  const viral = document.getElementById("viralText").value.trim();
+  const subject = document.getElementById("mySubject").value.trim();
+  if (!viral || !subject) { document.getElementById("scriptStatus").textContent = "Il faut la vidéo virale ET ton sujet."; return; }
+  resetChat();
+  askAI(`Vidéo virale :\n${viral}\n\nMon sujet : ${subject}`, "Adapter pour : " + subject);
+};
+const sendReply = () => {
+  const r = document.getElementById("replyText");
+  if (!r.value.trim()) return;
+  askAI(r.value.trim(), r.value.trim());
+  r.value = "";
+};
+document.getElementById("replyGo").onclick = sendReply;
+document.getElementById("replyText").addEventListener("keydown", e => { if (e.key === "Enter") sendReply(); });
 
 // ----- Appels Apify (via le relais, la clé reste dans Cloudflare) -----
 async function runActor(actor, input) {
@@ -519,7 +592,7 @@ function render(list) {
     const lines = isCarousel
       ? `<span>👁 ${fmtNum(v.views)}</span><span>🖼 ${v.count}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`
       : `<span>👁 ${fmtNum(v.views)}</span><span>${fmtDuration(v.duration)}${sameLength ? " ✓" : ""}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`;
-    const btn = isCarousel ? "" : `<button class="analyse" onclick="analyse(${i})">Analyser le style</button>`;
+    const btn = isCarousel ? "" : `<button class="adapt" onclick="adaptVideo(${i})">Adapter</button><button class="analyse" onclick="analyse(${i})">Analyser le style</button>`;
     return `
     <div class="tile">
       <a href="${v.url}" target="_blank" rel="noopener" style="position:absolute;inset:0"></a>
