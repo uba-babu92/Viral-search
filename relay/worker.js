@@ -48,6 +48,13 @@ export default {
         headers: { "Authorization": `Bearer ${env.APIFY_KEY}`, "Content-Type": "application/json" },
         body,
       });
+    } else if (p === "/subtitle") {
+      // Récupère un fichier de sous-titres TikTok (seulement depuis les serveurs TikTok)
+      const target = new URL(url.searchParams.get("url") || "https://x.invalid");
+      const okHost = /(^|\.)(tiktokcdn\.com|tiktokcdn-us\.com|tiktokcdn-eu\.com|tiktokv\.com|tiktok\.com|byteoversea\.com|ibyteimg\.com|muscdn\.com)$/.test(target.hostname);
+      if (target.protocol !== "https:" || !okHost) return new Response("Adresse refusée", { status: 400, headers: cors });
+      const r = await fetch(target, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.tiktok.com/" } });
+      return new Response(r.body, { status: r.status, headers: { ...cors, "Content-Type": "text/plain; charset=utf-8" } });
     } else if (p === "/shotstack/upload" && request.method === "POST") {
       // Donne une adresse où la page envoie la vidéo
       upstream = await fetch(`https://api.shotstack.io/ingest/${stage}/upload`, { method: "POST", headers: shot });

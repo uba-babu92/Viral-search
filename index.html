@@ -49,6 +49,12 @@
   details { margin-top: 16px; font-size: 12px; color: #888; }
   pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; color: #aaa; }
   .hidden { display: none !important; }
+  #viewer { position: fixed; inset: 0; background: #000e; z-index: 50; display: flex; flex-direction: column; }
+  #viewer .vtop { display: flex; justify-content: flex-end; padding: 10px; }
+  #viewer .vtop button { width: 40px; height: 40px; border-radius: 20px; border: 0; background: #333; color: #fff; font-size: 18px; }
+  #viewer .vbody { flex: 1; overflow-y: auto; padding: 0 16px 24px; }
+  #viewerFrame { width: 100%; aspect-ratio: 9 / 16; max-height: 62vh; border: 0; border-radius: 10px; background: #111; display: block; margin: 0 auto 8px; }
+  textarea.brand { min-height: 80px; }
 </style>
 </head>
 <body>
@@ -98,7 +104,7 @@
   </div>
   <div id="boxAdapter" class="hidden">
     <textarea id="viralText" placeholder="Texte de la vidéo virale (appuie sur « Adapter » sur une vidéo dans Recherche, ou colle-le ici)"></textarea>
-    <input id="mySubject" type="text" placeholder="Ton sujet à toi (ex : mon vlog dans les Vosges)">
+    <textarea id="mySubject" class="brand" placeholder="Ta marque / ton sujet : qui tu es, ce que tu vends ou mets en avant, ton style, ton public…"></textarea>
     <button class="main" id="adapterGo">Adapter à ma vidéo</button>
   </div>
   <div id="scriptStatus" class="small"></div>
@@ -119,6 +125,18 @@
   <div id="montageStatus" class="small">Choisis une vidéo, puis appuie sur le bouton.</div>
   <div id="montageResult"></div>
 </section>
+
+<!-- ===== GRAND ÉCRAN VIDÉO ===== -->
+<div id="viewer" class="hidden">
+  <div class="vtop"><button id="viewerClose">✕</button></div>
+  <div class="vbody">
+    <iframe id="viewerFrame" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>
+    <div id="viewerInfo" class="small"></div>
+    <textarea id="viewerBrand" class="brand" placeholder="Ta marque / ton sujet : qui tu es, ce que tu vends ou mets en avant, ton style, ton public…"></textarea>
+    <button class="main" id="viewerGo">Adapter</button>
+    <div id="viewerStatus" class="small"></div>
+  </div>
+</div>
 
 <script>
 const VIDEO_ACTOR = "mu0i~tiktok-search-scraper";
@@ -482,6 +500,93 @@ const sendReply = () => {
 document.getElementById("replyGo").onclick = sendReply;
 document.getElementById("replyText").addEventListener("keydown", e => { if (e.key === "Enter") sendReply(); });
 
+// ----- Grand écran + transcription gratuite (sous-titres TikTok) -----
+let viewIdx = -1;
+const brandSaved = localStorage.getItem("brand") || "";
+document.getElementById("mySubject").value = brandSaved;
+document.getElementById("viewerBrand").value = brandSaved;
+["mySubject", "viewerBrand"].forEach(id => document.getElementById(id).addEventListener("input", e => {
+  localStorage.setItem("brand", e.target.value);
+  document.getElementById(id === "mySubject" ? "viewerBrand" : "mySubject").value = e.target.value;
+}));
+
+function openViewer(i) {
+  viewIdx = i;
+  const v = items[i];
+  document.getElementById("viewerFrame").src = v.id ? `https://www.tiktok.com/embed/v2/${v.id}` : "about:blank";
+  document.getElementById("viewerInfo").innerHTML =
+    `👁 ${fmtNum(v.views)} · ♥ ${fmtNum(v.likes)} · ${fmtDuration(v.duration)} · <a href="${v.url}" target="_blank" rel="noopener" style="color:#888">Ouvrir sur TikTok</a>`;
+  document.getElementById("viewerStatus").textContent = "";
+  document.getElementById("viewer").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+function closeViewer() {
+  document.getElementById("viewer").classList.add("hidden");
+  document.getElementById("viewerFrame").src = "about:blank";
+  document.body.style.overflow = "";
+}
+document.getElementById("viewerClose").onclick = closeViewer;
+
+// Cherche les liens de sous-titres dans les données du scraper, quel que soit le nom du champ
+function findSubtitleLinks(obj, out = [], key = "") {
+  if (typeof obj === "string") {
+    if (/^https?:\/\//.test(obj) && (/subtitle|caption|\.vtt|webvtt|srt/i.test(key) || /\.vtt|webvtt|subtitle/i.test(obj))) out.push({ url: obj, hint: key });
+  } else if (Array.isArray(obj)) obj.forEach(x => findSubtitleLinks(x, out, key));
+  else if (obj && typeof obj === "object") {
+    const lang = String(obj.language ?? obj.languageCodeName ?? obj.lang ?? obj.LanguageCodeName ?? "");
+    for (const [k, x] of Object.entries(obj)) {
+      const before = out.length;
+      findSubtitleLinks(x, out, key + "." + k);
+      for (let j = before; j < out.length; j++) out[j].lang ||= lang;
+    }
+  }
+  return out;
+}
+
+// Transforme un fichier de sous-titres (WebVTT/SRT) en texte simple
+function vttToText(vtt) {
+  const lines = vtt.split(/\r?\n/).filter(l => l.trim() && !/^WEBVTT|^NOTE|^\d+$|-->/.test(l.trim()));
+  const clean = lines.map(l => l.replace(/<[^>]+>/g, "").trim());
+  return clean.filter((l, i) => l !== clean[i - 1]).join(" ");
+}
+
+async function getTranscript(v) {
+  const links = findSubtitleLinks(v.raw);
+  links.sort((a, b) => (/fr/i.test(b.lang) - /fr/i.test(a.lang)) || (/en/i.test(b.lang) - /en/i.test(a.lang)));
+  for (const l of links) {
+    for (const u of [l.url, `${RELAY}/subtitle?url=${encodeURIComponent(l.url)}`]) {
+      try {
+        const r = await fetch(u);
+        if (!r.ok) continue;
+        const text = vttToText(await r.text());
+        if (text.length > 10) return text;
+      } catch (e) { /* on essaie la suite */ }
+    }
+  }
+  return "";
+}
+
+document.getElementById("viewerGo").onclick = async () => {
+  const v = items[viewIdx];
+  const brand = document.getElementById("viewerBrand").value.trim();
+  const st = document.getElementById("viewerStatus");
+  if (!brand) { st.textContent = "Explique d'abord ta marque / ton sujet juste au-dessus."; return; }
+  st.textContent = "Transcription en cours…";
+  const transcript = await getTranscript(v);
+  closeViewer();
+  setRubrique("script");
+  setScriptMode("adapter");
+  document.getElementById("viralText").value =
+    (transcript ? `Ce qui est dit dans la vidéo :\n${transcript}\n\n` : "") +
+    `Description : ${v.text || "(vide)"}\nDurée : ${fmtDuration(v.duration) || "?"} · Vues : ${fmtNum(v.views)}${v.music ? " · Son : " + v.music : ""}\nLien : ${v.url}`;
+  document.getElementById("adapterGo").click();
+  const note = document.createElement("div");
+  note.className = "small";
+  note.textContent = transcript ? "✅ Texte de la vidéo récupéré (sous-titres TikTok)."
+    : "ℹ️ Pas de sous-titres trouvés pour cette vidéo : j'utilise seulement sa description.";
+  document.getElementById("chat").prepend(note);
+};
+
 // ----- Appels Apify (via le relais, la clé reste dans Cloudflare) -----
 async function runActor(actor, input) {
   const res = await fetch(`${RELAY}/apify/${actor}`, {
@@ -542,6 +647,8 @@ function normalize(v) {
     hashtags: [...new Set((text.match(/#[\p{L}\p{N}_]+/gu) || []).map(h => h.toLowerCase()))],
     music: v.musicMeta?.musicName ?? v.music?.title ?? "",
     url: v.webVideoUrl ?? v.url ?? "#",
+    id: String(v.id ?? v.aweme_id ?? v.awemeId ?? ((v.webVideoUrl ?? v.url ?? "").match(/video\/(\d+)/) || [])[1] ?? ""),
+    raw: v,
     cover: v.videoMeta?.coverUrl ?? v.video?.cover ?? v.covers?.[0] ?? v.coverUrl ?? v.cover ?? v.thumbnail ?? ""
   };
 }
@@ -592,10 +699,10 @@ function render(list) {
     const lines = isCarousel
       ? `<span>👁 ${fmtNum(v.views)}</span><span>🖼 ${v.count}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`
       : `<span>👁 ${fmtNum(v.views)}</span><span>${fmtDuration(v.duration)}${sameLength ? " ✓" : ""}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`;
-    const btn = isCarousel ? "" : `<button class="adapt" onclick="adaptVideo(${i})">Adapter</button><button class="analyse" onclick="analyse(${i})">Analyser le style</button>`;
+    const btn = isCarousel ? "" : `<button class="analyse" onclick="analyse(${i})">Analyser le style</button>`;
     return `
     <div class="tile">
-      <a href="${v.url}" target="_blank" rel="noopener" style="position:absolute;inset:0"></a>
+      ${isCarousel ? `<a href="${v.url}" target="_blank" rel="noopener" style="position:absolute;inset:0"></a>` : `<a href="#" onclick="openViewer(${i});return false" style="position:absolute;inset:0"></a>`}
       ${v.cover ? `<img src="${v.cover}" alt="" referrerpolicy="no-referrer">` : ""}
       <div class="overlay">${lines}</div>
       ${btn}
