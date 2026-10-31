@@ -1,6 +1,8 @@
 // Relais sécurisé : les clés restent dans Cloudflare (variables), jamais dans la page.
-// Variables : SHOTSTACK_KEY, SHOTSTACK_ENV ("stage" pour tester, "v1" pour le vrai), AI_KEY (Vercel AI Gateway).
+// Variables : APIFY_KEY, SHOTSTACK_KEY, SHOTSTACK_ENV ("stage" pour tester, "v1" pour le vrai), AI_KEY (Vercel AI Gateway).
 const ALLOWED_ORIGIN = "https://uba-babu92.github.io";
+// Seuls ces scrapers Apify sont autorisés
+const APIFY_ACTORS = ["mu0i~tiktok-search-scraper", "scrapingmonkey~tiktok-scraper"];
 
 export default {
   async fetch(request, env) {
@@ -20,6 +22,7 @@ export default {
         ok: true,
         shotstack: !!env.SHOTSTACK_KEY,
         ia: !!env.AI_KEY,
+        apify: !!env.APIFY_KEY,
         mode: env.SHOTSTACK_ENV || "stage",
       }, { headers: cors });
     }
@@ -37,6 +40,12 @@ export default {
       upstream = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
         method: "POST",
         headers: { "Authorization": `Bearer ${env.AI_KEY}`, "Content-Type": "application/json" },
+        body,
+      });
+    } else if ((m = p.match(/^\/apify\/([\w~.-]+)$/)) && request.method === "POST" && APIFY_ACTORS.includes(m[1])) {
+      upstream = await fetch(`https://api.apify.com/v2/acts/${m[1]}/run-sync-get-dataset-items`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${env.APIFY_KEY}`, "Content-Type": "application/json" },
         body,
       });
     } else if (p === "/shotstack/upload" && request.method === "POST") {

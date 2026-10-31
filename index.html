@@ -26,6 +26,9 @@
   #myInfo { color: #facc15; margin: 6px 0 8px; font-size: 13px; }
   #status { margin: 12px 0; font-size: 14px; color: #aaa; }
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+  .msg { background: #1c1c1c; border-radius: 10px; padding: 12px; margin: 8px 0; font-size: 14px; white-space: pre-wrap; }
+  .msg.me { background: #1e3a8a; }
+  .msg button { margin-top: 8px; padding: 6px 10px; border: 1px solid #444; border-radius: 6px; background: #111; color: #eee; }
   .tile { position: relative; aspect-ratio: 9 / 16; background: #222; border-radius: 6px; overflow: hidden; display: block; }
   .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .overlay { position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px #000; }
@@ -40,8 +43,6 @@
 </head>
 <body>
 <h1>Viral Finder (proto)</h1>
-
-<input id="token" type="password" placeholder="Clé API Apify">
 
 <div class="rubriques">
   <button id="rubRecherche" class="on">Recherche</button>
@@ -68,7 +69,6 @@
     <button id="typeCarrousels">Carrousels</button>
   </div>
   <button class="main" id="go">Chercher</button>
-  <div class="small">La clé reste dans ton navigateur, jamais envoyée ailleurs que chez Apify.</div>
   <div id="status"></div>
   <div id="panel" class="hidden"></div>
   <div id="results"></div>
@@ -77,7 +77,11 @@
 
 <!-- ===== SCRIPT (vide pour l'instant) ===== -->
 <section id="secScript" class="hidden">
-  <div class="box">Bientôt : écriture de scripts avec une IA (Mistral).</div>
+  <textarea id="scriptText" placeholder="Colle ton script ici"></textarea>
+  <input id="scriptAsk" type="text" placeholder="Ce que tu veux (ex : plus court, style TikTok, pour vendre)">
+  <button class="main" id="scriptGo">Adapter</button>
+  <div id="scriptStatus" class="small"></div>
+  <div id="chat"></div>
 </section>
 
 <!-- ===== MONTAGE ===== -->
@@ -93,8 +97,8 @@
 <script>
 const VIDEO_ACTOR = "mu0i~tiktok-search-scraper";
 const PHOTO_ACTOR = "scrapingmonkey~tiktok-scraper";
-const tokenInput = document.getElementById("token");
-tokenInput.value = localStorage.getItem("apifyToken") || "";
+const RELAY = "https://viral-relais.v5nhskv7zy.workers.dev";
+localStorage.removeItem("apifyToken"); // ancienne clé, plus utilisée
 
 let items = [];
 let myVideo = null;
@@ -150,7 +154,6 @@ document.getElementById("go").addEventListener("click", () => search());
 document.getElementById("query").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
 
 // ----- Montage (via le relais Cloudflare, les clés n'apparaissent jamais ici) -----
-const RELAY = "https://viral-relais.v5nhskv7zy.workers.dev";
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const mStatus = t => document.getElementById("montageStatus").textContent = t;
 
@@ -232,10 +235,62 @@ document.getElementById("montageGo").addEventListener("click", async () => {
   }
 });
 
-// ----- Appels Apify -----
-async function runActor(token, actor, input) {
-  const url = `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
-  const res = await fetch(url, {
+// ----- Script : petit chatbot IA (Vercel AI Gateway via le relais) -----
+const AI_MODEL = "mistral/mistral-small";
+const chat = [{ role: "system", content: "Tu es un expert en scripts de vidéos courtes virales (TikTok, Reels). Tu adaptes le script de l'utilisateur selon sa demande. Réponds en français, avec le script prêt à lire : accroche forte dans les 3 premières secondes, phrases courtes, texte à l'écran entre [crochets]. Pas de blabla autour." }];
+
+function addMsg(text, me) {
+  const d = document.createElement("div");
+  d.className = "msg" + (me ? " me" : "");
+  d.textContent = text;
+  if (!me) {
+    const b = document.createElement("button");
+    b.textContent = "Copier";
+    b.onclick = () => navigator.clipboard.writeText(text).then(() => b.textContent = "Copié ✅");
+    d.appendChild(document.createElement("br"));
+    d.appendChild(b);
+  }
+  document.getElementById("chat").appendChild(d);
+  d.scrollIntoView({ behavior: "smooth" });
+}
+
+document.getElementById("scriptGo").addEventListener("click", async () => {
+  const txt = document.getElementById("scriptText");
+  const ask = document.getElementById("scriptAsk");
+  const btn = document.getElementById("scriptGo");
+  const st = document.getElementById("scriptStatus");
+  const first = chat.length === 1;
+  if (first && !txt.value.trim()) { st.textContent = "Colle d'abord ton script."; return; }
+  if (!first && !ask.value.trim()) { st.textContent = "Écris ta correction dans la petite case."; return; }
+  const content = first ? `Mon script :\n${txt.value.trim()}\n\nCe que je veux : ${ask.value.trim() || "rends-le plus viral"}` : ask.value.trim();
+  chat.push({ role: "user", content });
+  addMsg(first ? (ask.value.trim() || "Rends-le plus viral") : content, true);
+  ask.value = "";
+  btn.disabled = true;
+  st.textContent = "L'IA écrit…";
+  try {
+    const res = await fetch(RELAY + "/ai", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: AI_MODEL, messages: chat })
+    });
+    const t = await res.text();
+    if (!res.ok) throw new Error(res.status + " " + t.slice(0, 150));
+    const answer = JSON.parse(t).choices[0].message.content;
+    chat.push({ role: "assistant", content: answer });
+    addMsg(answer, false);
+    st.textContent = "Pas satisfait ? Écris une correction (ex : encore plus court) et appuie sur Adapter.";
+    btn.textContent = "Envoyer la correction";
+  } catch (e) {
+    chat.pop();
+    st.textContent = "❌ " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ----- Appels Apify (via le relais, la clé reste dans Cloudflare) -----
+async function runActor(actor, input) {
+  const res = await fetch(`${RELAY}/apify/${actor}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)
@@ -245,23 +300,21 @@ async function runActor(token, actor, input) {
 }
 
 async function search(qArg) {
-  const token = tokenInput.value.trim();
   const q = (typeof qArg === "string" ? qArg : document.getElementById("query").value).trim();
   const status = document.getElementById("status");
   document.getElementById("results").innerHTML = "";
   document.getElementById("panel").classList.add("hidden");
   document.getElementById("raw").classList.add("hidden");
-  if (!token || !q) { status.textContent = "Mets ta clé et une thématique."; return; }
-  localStorage.setItem("apifyToken", token);
+  if (!q) { status.textContent = "Mets une thématique."; return; }
   status.textContent = "Recherche en cours (30 à 60 s)...";
 
   try {
     if (searchType === "videos") {
-      const data = await runActor(token, VIDEO_ACTOR, { queries: [q], maxVideos: 30 });
+      const data = await runActor(VIDEO_ACTOR, { queries: [q], maxVideos: 30 });
       showRaw(data[0]);
       items = data.map(normalize).filter(v => v.views > 0).sort((a, b) => b.views - a.views);
     } else {
-      const data = await runActor(token, PHOTO_ACTOR, { mode: "searchPhotos", searchTerms: [q], maxResults: 30, country: "FR" });
+      const data = await runActor(PHOTO_ACTOR, { mode: "searchPhotos", searchTerms: [q], maxResults: 30, country: "FR" });
       showRaw(data[0]);
       items = data.map(normalizePhoto).sort((a, b) => b.views - a.views);
     }
