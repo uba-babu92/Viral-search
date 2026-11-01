@@ -21,6 +21,11 @@
 - Clé IA : choisir Mistral (gratuit, sans carte) ou carte sur Vercel.
 - Apify : regarder le prix et les options (« vues minimum », « tri par popularité ») du scraper mu0i.
 
+## Baisser le prix de la recherche
+- Aujourd'hui : 150 vidéos demandées à chaque recherche (environ 5 fois plus cher qu'avant).
+- Pistes : option « vues minimum » ou « tri par popularité » du scraper, s'arrêter dès 50 vidéos virales, ou changer de scraper moins cher.
+- Réglage dans index.html : FETCH_VIDEOS (nombre de vidéos demandées).
+
 ## Petits trucs à corriger
 - Miniatures des carrousels qui ne s'affichent pas.
 - Tester le montage de bout en bout.
