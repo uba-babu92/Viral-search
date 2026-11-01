@@ -16,6 +16,11 @@
 - Montage simple via Shotstack (sous-titres auto, mode test avec logo).
 - Avertissement rouge quand un service n'a plus de crédit.
 
+## À faire lundi (par toi)
+- Cloudflare : recopier relay/worker.js dans viral-relais puis Déployer (pour la transcription).
+- Clé IA : choisir Mistral (gratuit, sans carte) ou carte sur Vercel.
+- Apify : regarder le prix et les options (« vues minimum », « tri par popularité ») du scraper mu0i.
+
 ## Petits trucs à corriger
 - Miniatures des carrousels qui ne s'affichent pas.
 - Tester le montage de bout en bout.
