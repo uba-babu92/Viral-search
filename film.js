@@ -17,7 +17,10 @@
     stop();
     stream = await navigator.mediaDevices.getUserMedia({
       audio: true,
-      video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 }, ...constraints },
+      // Vertical si le téléphone est tenu droit (format TikTok)
+      video: innerHeight > innerWidth
+        ? { width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: { ideal: 9 / 16 }, frameRate: { ideal: 30 }, ...constraints }
+        : { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 }, ...constraints },
     });
     video.srcObject = stream;
     video.classList.toggle("mirror", facing === "user");
