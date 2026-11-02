@@ -552,7 +552,7 @@
       const m = { input, dur: await input.computeDuration().catch(() => 5) };
       m.v = v && await v.canDecode().catch(() => false) ? v : null;
       m.a = a && await a.canDecode().catch(() => false) ? a : null;
-      if (m.v) { m.prev = new MB.CanvasSink(m.v, { width: PW, height: PH, fit: "contain", poolSize: 16 }); m.off = 0; }
+      if (m.v) { m.prev = new MB.CanvasSink(m.v, { width: PW, height: PH, fit: "contain", poolSize: 10 }); m.off = 0; m.vt = m.v; }
       ref._m = m;
       if (m.v) buildProxy(ref, m, blob);   // copie légère pour un aperçu fluide
       decodeAudio(ref);   // le son se prépare en arrière-plan
@@ -578,7 +578,8 @@
         const pin = new MB.Input({ source: new MB.BlobSource(new Blob([output.target.buffer], { type: "video/mp4" })), formats: MB.ALL_FORMATS });
         const pv = await pin.getPrimaryVideoTrack();
         const off = (await pv.getFirstTimestamp().catch(() => 0)) - (await m.v.getFirstTimestamp().catch(() => 0));
-        m.prev = new MB.CanvasSink(pv, { width: PW, height: PH, fit: "contain", poolSize: 16 });
+        m.prev = new MB.CanvasSink(pv, { width: PW, height: PH, fit: "contain", poolSize: 10 });
+        m.vt = pv; m.small = null;
         m.off = off;
         m.proxy = true;
         if (!playing) { closeFeeds(); renderStill(t); }
@@ -615,23 +616,24 @@
 
   // Flux d'images d'un élément (plan ou superposition), décodées à l'avance
   class Feed {
-    constructor(sink, item, k0, off = 0) {
+    constructor(sink, item, k0, off = 0, step = 1, depth = 6) {
       this.sink = sink; this.k0 = k0; this.k = -1; this.q = []; this.cur = null; this.done = false; this.busy = false;
+      this.step = step; this.depth = depth;
       const self = this;
       this.it = sink.canvasesAtTimestamps((function* () {
-        for (let k = k0; ; k++) { const ts = item.in + (k / FPS) * sp(item); if (ts >= item.out || self.done) return; yield ts + off; }
+        for (let k = k0; ; k += step) { const ts = item.in + (k / FPS) * sp(item); if (ts >= item.out || self.done) return; yield ts + off; }
       })());
       this.pump();
     }
     async pump() {
       if (this.busy) return;
       this.busy = true;
-      try { while (!this.done && this.q.length < 8) { const r = await this.it.next(); if (r.done) this.done = true; else this.q.push(r.value); } }
+      try { while (!this.done && this.q.length < this.depth) { const r = await this.it.next(); if (r.done) this.done = true; else this.q.push(r.value); } }
       catch (e) { this.done = true; }
       this.busy = false;
     }
     frame(kAbs) {   // image pour le numéro d'image demandé (garde la dernière si le décodage a du retard)
-      const want = kAbs - this.k0;
+      const want = Math.floor((kAbs - this.k0) / this.step);
       while (this.k < want && this.q.length) { const f = this.q.shift(); this.k++; if (f) this.cur = f.canvas; }
       this.pump();
       return this.cur;
@@ -639,13 +641,21 @@
     close() { this.done = true; this.q = []; }
   }
   const feeds = new Map();   // élément -> Feed
-  function feedFor(item, kAbs) {
+  // Les superpositions sont décodées en petit (affichées en petit), le plan principal en taille aperçu
+  function smallSink(m) {
+    if (!m.small && m.vt) m.small = new MB.CanvasSink(m.vt, { width: PW / 2, height: PH / 2, fit: "contain", poolSize: 7 });
+    return m.small;
+  }
+  let ovStep = 1;   // plusieurs superpositions en même temps : aperçu à 15 images/s pour elles (l'export reste à 30)
+  function feedFor(item, kAbs, overlay = false) {
     const m = item.ref && item.ref._m;
     if (!m || !m.prev) return null;
+    const sink = overlay ? smallSink(m) : m.prev, step = overlay ? ovStep : 1;
     let f = feeds.get(item);
-    if (!f || f.sink !== m.prev || kAbs < f.k0 + f.k || kAbs - (f.k0 + Math.max(0, f.k)) > 20) {   // trop loin : on recommence ici
+    const pos = f ? f.k0 + Math.max(0, f.k) * f.step : 0;
+    if (!f || f.sink !== sink || f.step !== step || kAbs < pos - f.step || kAbs - pos > 20) {   // trop loin : on recommence ici
       if (f) f.close();
-      f = new Feed(m.prev, item, Math.max(0, kAbs), m.off || 0);
+      f = new Feed(sink, item, Math.max(0, kAbs), m.off || 0, step, overlay ? 4 : 6);
       feeds.set(item, f);
     }
     return f;
@@ -705,10 +715,12 @@
     drawMain(vg, PW, PH, lastMain, c, off);
     // prépare le plan suivant à l'avance : zéro latence au passage
     if (clips[i + 1] && len(c) - off < 1.5) feedFor(clips[i + 1], 0);
+    const visible = overlays.filter(o => time >= o.start && time < o.start + len(o) && !o.ref.image).length;
+    ovStep = visible >= 2 ? 2 : 1;
     overlays.forEach(o => {
       if (time < o.start || time >= o.start + len(o)) return;
       if (o.ref.image) { if (o.ref._m) drawOverlayImg(vg, PW, PH, o.ref._m.image, o, time - o.start); return; }
-      const ko = Math.floor((time - o.start) * FPS + 1e-6), fo = feedFor(o, ko), im = fo && fo.frame(ko);
+      const ko = Math.floor((time - o.start) * FPS + 1e-6), fo = feedFor(o, ko, true), im = fo && fo.frame(ko);
       if (im) drawOverlayImg(vg, PW, PH, im, o, time - o.start);
     });
     drawTexts(vg, PW, PH, time);
@@ -719,8 +731,14 @@
       if (!keep) { f.close(); feeds.delete(item); }
     });
   }
-  let stillToken = 0;
-  async function renderStill(time) {   // image fixe (pause, défilement)
+  let stillToken = 0, stillBusy = false, stillNext = null;
+  async function renderStill(time) {   // image fixe (pause, défilement) : un seul calcul à la fois, le dernier demandé gagne
+    if (stillBusy) { stillNext = time; return; }
+    stillBusy = true;
+    try { await renderStillNow(time); } finally { stillBusy = false; }
+    if (stillNext !== null) { const n = stillNext; stillNext = null; renderStill(n); }
+  }
+  async function renderStillNow(time) {
     const my = ++stillToken;
     const { i, off } = locate(time);
     if (i < 0) { vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH); return; }
@@ -733,7 +751,7 @@
       const mo = await media(o.ref).catch(() => null);
       if (!mo) continue;
       if (mo.image) ovs.push([mo.image, o]);
-      else if (mo.prev) { const wo = await mo.prev.getCanvas(o.in + (time - o.start) * sp(o) + (mo.off || 0)).catch(() => null); if (wo) ovs.push([wo.canvas, o]); }
+      else if (mo.prev) { const wo = await smallSink(mo).getCanvas(o.in + (time - o.start) * sp(o) + (mo.off || 0)).catch(() => null); if (wo) ovs.push([wo.canvas, o]); }
     }
     if (my !== stillToken) return;
     vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH);
