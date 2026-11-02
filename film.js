@@ -117,7 +117,8 @@
   function startRec() {
     if (!stream || recorder) return;
     chunks = [];
-    recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    // Haute qualité : ~12 Mbit/s, comme l'appareil photo de l'iPhone
+    recorder = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 12e6, audioBitsPerSecond: 192e3 });
     recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
     recorder.onstop = () => {
       const dur = (Date.now() - recStart) / 1000;

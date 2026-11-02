@@ -51,8 +51,7 @@
   .eov .ox, .eov .orz { display: none; position: absolute; width: 28px; height: 28px; border-radius: 14px; background: #222; color: #fff; align-items: center; justify-content: center; }
   .eov.sel .ox, .eov.sel .orz { display: flex; }
   .eov .ox { top: -14px; left: -14px; } .eov .orz { bottom: -14px; right: -14px; }
-  #edCap { position: absolute; transform: translate(-50%, -50%); width: 86%; text-align: center; color: #fff; font-weight: 800; line-height: 1.1; touch-action: none; z-index: 3;
-    text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 3px 6px #000; }
+  #edCap { position: absolute; transform: translate(-50%, -50%); width: 86%; text-align: center; color: transparent; font-weight: 800; line-height: 1.3; touch-action: none; z-index: 3; border-radius: 6px; }
   #edCap.sel { outline: 1px dashed #fffa; }
   #ed .ectrl { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 16px; font-size: 13px; }
   #edTime b { color: #fff; font-weight: 500; } #edTime { color: #777; }
@@ -130,7 +129,7 @@
   let audios = [];     // sons : {ref, kind:"sfx"|"voice", start, in, out, vol}
   let overlays = [];   // superpositions : {ref, start, in, out, vol, x, y, scale}
   let caps = [];       // légendes : {text, start, in, out}
-  let capStyle = { x: 0.5, y: 0.7, size: 1 };
+  let capStyle = { x: 0.5, y: 0.7, size: 1, style: "box" };
   let clipMute = false;
   let sel = null;      // {type:"v"|"a"|"o"|"c", i}
   let t = 0, playing = false, cur = -1, front = 0, programmatic = false, token = 0;
@@ -146,7 +145,8 @@
   const half = () => tl.clientWidth / 2;
   const arr = k => (k === "a" ? audios : k === "o" ? overlays : caps);
   const fmt = s => { s = Math.max(0, s); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(Math.floor(s % 60)).padStart(2, "0"); };
-  const showTime = () => { $("edTime").innerHTML = `<b>${fmt(t)}</b> / ${fmt(total())}`; };
+  let lastTime = "";
+  const showTime = () => { const h = `<b>${fmt(t)}</b> / ${fmt(total())}`; if (h !== lastTime) $("edTime").innerHTML = lastTime = h; };
   const toast = (msg, ms = 2500) => { const e = $("edToast"); e.textContent = msg; e.classList.remove("hidden"); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.add("hidden"), ms); };
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -190,9 +190,10 @@
     $("ed").classList.remove("hidden");
     document.body.style.overflow = "hidden";
     refs = []; clips = []; audios = []; overlays = []; caps = []; sel = null;
-    capStyle = { x: 0.5, y: 0.7, size: 1 }; clipMute = false;
+    capStyle = { x: 0.5, y: 0.7, size: 1, style: "box" }; clipMute = false;
     past.length = future.length = 0; updUndo();
     resetPlayers();
+    ["400 20px Anton", '800 20px "JetBrains Mono"', "900 20px Montserrat"].forEach(f => document.fonts.load(f).catch(() => {}));
     await addVideos(list, false);
     seek(0);
     if (opts.message) toast(opts.message, 4000);
@@ -290,7 +291,7 @@
     else if (sel.type === "v") html = back + b("split", "split", "Diviser") + b("speed", "speed", "Vitesse") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "a") html = back + b("split", "split", "Diviser") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "o") html = back + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
-    else html = back + b("text", "text", "Modifier le texte") + b("del", "trash", "Supprimer") + b("delcaps", "captions", "Tout supprimer");
+    else html = back + b("style", "captions", "Style") + b("text", "text", "Modifier le texte") + b("del", "trash", "Supprimer") + b("delcaps", "trash", "Tout supprimer");
     $("edTools").innerHTML = html;
   }
 
@@ -321,7 +322,7 @@
     const c = caps.find(c => t >= c.start && t < c.start + len(c));
     el.classList.toggle("hidden", !c);
     if (!c) return;
-    el.textContent = c.text;
+    el.textContent = (capStyle.style === "pop" ? c.text.split(/\s+/)[0] : c.text) || " ";
     el.style.left = capStyle.x * 100 + "%";
     el.style.top = capStyle.y * 100 + "%";
     el.style.fontSize = stage.clientHeight * CAP_RATIO * capStyle.size + "px";
@@ -343,7 +344,7 @@
       return dragOn(ev => {
         capStyle.x = Math.min(0.9, Math.max(0.1, sx + (ev.clientX - x0) / r.width));
         capStyle.y = Math.min(0.95, Math.max(0.05, sy + (ev.clientY - y0) / r.height));
-        drawCaption();
+        drawCaption(); if (!playing) renderStill(t);
       });
     }
     const entry = [...ovEls.values()].find(v => v.box === box);
@@ -493,6 +494,7 @@
       const ko = Math.floor((time - o.start) * FPS + 1e-6), fo = feedFor(o, ko), im = fo && fo.frame(ko);
       if (im) drawOverlayImg(vg, PW, PH, im, o);
     });
+    drawCaps(vg, PW, PH, time);
     // libère les flux qui ne servent plus
     feeds.forEach((f, item) => {
       const keep = item === c || item === clips[i + 1] || (overlays.includes(item) && time >= item.start - 1.5 && time < item.start + len(item));
@@ -519,6 +521,7 @@
     vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH);
     if (w) { vg.drawImage(w.canvas, 0, 0, PW, PH); lastMain = null; }
     ovs.forEach(([src, o]) => drawOverlayImg(vg, PW, PH, src, o));
+    drawCaps(vg, PW, PH, time);
   }
 
   // ---------- Lecture : horloge du son = image et son parfaitement calés ----------
@@ -718,7 +721,7 @@
         if (kind !== "v") item.start = Math.max(0, start0 + (item.in - in0) / sp(item));
       } else item.out = Math.max(Math.min(maxOut, out0 + d), in0 + 0.2);
       draw();
-      $("edTime").innerHTML = `<b>${len(item).toFixed(1)} s</b>`;
+      $("edTime").innerHTML = lastTime = `<b>${len(item).toFixed(1)} s</b>`;
     };
     const end = () => {
       window.removeEventListener("pointermove", move);
@@ -793,6 +796,7 @@
     else if (name === "speed") return speedSheet();
     else if (name === "volume") return volumeSheet();
     else if (name === "text") return textSheet();
+    else if (name === "style") return styleSheet();
     else if (name === "captions") return captionSheet();
     else if (name === "sound") return soundSheet();
     else if (name === "overlay") return $("edOvFile").click();
@@ -836,8 +840,8 @@
     sheet(`<b>Modifier le texte</b><input type="text" id="edCapTxt" value="${esc(c.text)}">
       <b>Taille</b><input type="range" id="edCapSize" min="60" max="180" step="5" value="${Math.round(capStyle.size * 100)}">
       <button class="main" id="edCapOk">OK</button>`);
-    $("edCapSize").oninput = () => { capStyle.size = +$("edCapSize").value / 100; drawCaption(); };
-    $("edCapOk").onclick = () => { save(); c.text = $("edCapTxt").value.trim() || c.text; closeSheet(); draw(); };
+    $("edCapSize").oninput = () => { capStyle.size = +$("edCapSize").value / 100; drawCaption(); renderStill(t); };
+    $("edCapOk").onclick = () => { save(); const nt = $("edCapTxt").value.trim(); if (nt && nt !== c.text) { c.text = nt; c.words = null; } closeSheet(); draw(); seek(t); };
   }
   function captionSheet(auto) {
     if (caps.length && !auto) return toast("Touche une légende pour la modifier ou la déplacer");
@@ -857,13 +861,15 @@
       fd.append("model", "whisper-large-v3-turbo");
       fd.append("response_format", "verbose_json");
       fd.append("language", "fr");
+      fd.append("timestamp_granularities[]", "word");
+      fd.append("timestamp_granularities[]", "segment");
       const res = await fetch(RELAY + "/transcribe", { method: "POST", body: fd });
       const txt = await res.text();
       if (!res.ok) { if (typeof checkCredit === "function") checkCredit("IA", res.status, txt); throw new Error(res.status === 401 ? "clé IA (Groq) manquante ou invalide dans Cloudflare" : `transcription : ${res.status} ${txt.slice(0, 120)}`); }
       const data = JSON.parse(txt);
       const segs = data.segments && data.segments.length ? data.segments : [{ text: data.text || "", start: 0, end: total() }];
       save();
-      caps = chunk(segs);
+      caps = data.words && data.words.length ? chunkWords(data.words) : chunk(segs);
       sel = null;
       if (!caps.length) return sheet(`<div>Aucune parole entendue dans la vidéo.</div>`);
       closeSheet(); draw(); seek(t);
@@ -871,6 +877,23 @@
     } catch (err) {
       sheet(`<div style="color:#f87171">❌ ${esc(err.message)}</div>`);
     }
+  }
+  // Avec le temps de chaque mot : blocs de 1 à 3 mots (effet karaoké)
+  function chunkWords(list) {
+    const ws = list.map(x => ({ w: String(x.word).trim(), s: +x.start, e: +x.end })).filter(x => x.w);
+    const out = [];
+    let g = [];
+    const push = () => { if (!g.length) return; const st = g[0].s, en = Math.max(g[g.length - 1].e, st + 0.2);
+      out.push({ text: g.map(x => x.w).join(" "), start: +st.toFixed(3), in: 0, out: +(en - st).toFixed(3), words: g.map(x => ({ w: x.w, s: +(x.s - st).toFixed(3), e: +(x.e - st).toFixed(3) })) }); g = []; };
+    ws.forEach((x, i) => {
+      if (g.length && x.s - g[g.length - 1].e > 0.6) push();          // silence : nouveau bloc
+      g.push(x);
+      if (g.length >= 3 || g.map(y => y.w).join(" ").length > 14 || /[.,!?;:]$/.test(x.w)) push();
+    });
+    push();
+    // pas de chevauchement entre blocs
+    for (let i = 0; i < out.length - 1; i++) out[i].out = Math.min(out[i].out, +(out[i + 1].start - out[i].start).toFixed(3));
+    return out;
   }
   // Découpe en petits blocs de 1 à 4 mots, comme TikTok
   function chunk(segs) {
@@ -994,6 +1017,88 @@
   function closeSheet() { $("edSheet").classList.add("hidden"); }
   $("edSheetClose").onclick = () => { closeSheet(); draw(); };
 
+  // ---------- Légendes : styles animés (dessinés pareil dans l'aperçu et l'export) ----------
+  const CAP_STYLES = [["box", "Boîte"], ["karaoke", "Karaoké"], ["pop", "Pop"], ["classic", "Classique"]];
+  const ease = x => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+  const activeCap = time => caps.find(c => time >= c.start && time < c.start + len(c));
+  // Mots d'une légende avec leurs temps absolus
+  function capWords(c) {
+    const o = c.start - c.in;
+    let ws = c.words && c.words.length ? c.words : null;
+    if (!ws) { // pas de temps par mot : on répartit
+      const parts = c.text.split(/\s+/).filter(Boolean), d = (c.out - c.in) / Math.max(1, parts.length);
+      ws = parts.map((w, i) => ({ w, s: c.in + i * d, e: c.in + (i + 1) * d }));
+    }
+    return ws.map(x => ({ w: x.w, s: o + x.s, e: o + x.e })).filter(x => x.e > c.start && x.s < c.start + len(c));
+  }
+  function withScale(g, cx, cy, s, fn) { g.save(); g.translate(cx, cy); g.scale(s, s); g.translate(-cx, -cy); fn(); g.restore(); }
+  function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  function drawCaps(g, W, H, time) {
+    const c = activeCap(time);
+    if (!c) return;
+    const style = capStyle.style || "box";
+    const words = capWords(c);
+    if (!words.length) return;
+    let ai = words.findIndex(w => time >= w.s && time < w.e);
+    if (ai < 0) ai = Math.max(0, words.filter(w => w.s <= time).length - 1);
+    const base = H * CAP_RATIO * capStyle.size, cx = capStyle.x * W, cy = capStyle.y * H, maxW = W * 0.88;
+    const age = time - c.start;
+    g.textBaseline = "middle"; g.lineJoin = "round";
+    if (style === "classic") { drawCapText(g, W, H, c.text); return; }
+    if (style === "pop") {   // un mot à la fois, qui arrive un peu plus gros puis se pose
+      const w = words[ai], text = w.w.toUpperCase();
+      let size = base * 1.5;
+      g.font = `400 ${size}px Anton, Impact, sans-serif`;
+      const tw = g.measureText(text).width;
+      if (tw > maxW) { size *= maxW / tw; g.font = `400 ${size}px Anton, Impact, sans-serif`; }
+      const s = 1 + 0.15 * (1 - ease((time - w.s) / 0.14));
+      withScale(g, cx, cy, s, () => {
+        g.textAlign = "center";
+        g.lineWidth = size * 0.14; g.strokeStyle = "#000"; g.strokeText(text, cx, cy);
+        g.fillStyle = "#fff"; g.fillText(text, cx, cy);
+      });
+      return;
+    }
+    const box = style === "box";
+    let size = box ? base * 0.95 : base * 1.05;
+    const font = sz => (box ? `800 ${sz}px "JetBrains Mono", ui-monospace, Menlo, monospace` : `900 ${sz}px Montserrat, system-ui, sans-serif`);
+    const texts = words.map(w => w.w.toUpperCase());
+    g.font = font(size);
+    const gap = () => g.measureText(" ").width + (box ? 0 : size * 0.18);   // karaoké : place pour le mot qui grossit
+    let space = gap(), widths = texts.map(x => g.measureText(x).width);
+    let tw = widths.reduce((a, b) => a + b, 0) + space * (texts.length - 1);
+    if (tw > maxW) { size *= maxW / tw; g.font = font(size); space = gap(); widths = texts.map(x => g.measureText(x).width); tw = widths.reduce((a, b) => a + b, 0) + space * (texts.length - 1); }
+    const s = 1 + (box ? 0.06 : 0.12) * (1 - ease(age / 0.16));   // petit zoom d'arrivée
+    withScale(g, cx, cy, s, () => {
+      if (box) {
+        const pad = size * 0.35, h = size * 1.35;
+        g.fillStyle = "rgba(15,15,15,0.88)";
+        roundRect(g, cx - tw / 2 - pad, cy - h / 2, tw + pad * 2, h, size * 0.28); g.fill();
+      }
+      let x = cx - tw / 2;
+      g.textAlign = "left";
+      texts.forEach((txt, i) => {
+        const on = i === ai;
+        if (box) { g.fillStyle = on ? "#ffffff" : "#8c8c8c"; g.fillText(txt, x, cy); }
+        else {
+          const k = on ? 1 + 0.12 * ease((time - words[i].s) / 0.12) : 1;   // le mot prononcé grossit un peu
+          withScale(g, x + widths[i] / 2, cy, k, () => {
+            g.lineWidth = size * 0.16; g.strokeStyle = "#000"; g.strokeText(txt, x, cy);
+            g.fillStyle = on ? "#FFE11A" : "#ffffff"; g.fillText(txt, x, cy);
+          });
+        }
+        x += widths[i] + space;
+      });
+    });
+  }
+  function styleSheet() {
+    sheet(`<b>Style des légendes</b>
+      <div class="elib">${CAP_STYLES.map(([id, label]) => `<button class="main ${(capStyle.style || "box") === id ? "" : "alt"}" data-st="${id}" style="width:100%;height:auto">${label}</button>`).join("")}</div>
+      <b>Taille</b><input type="range" id="edCapSize2" min="60" max="180" step="5" value="${Math.round(capStyle.size * 100)}">`);
+    $("edSheetBody").querySelectorAll("[data-st]").forEach(b => b.onclick = () => { save(); capStyle.style = b.dataset.st; styleSheet(); draw(); seek(t); });
+    $("edCapSize2").oninput = () => { capStyle.size = +$("edCapSize2").value / 100; renderStill(t); drawCaption(); };
+  }
+
   // ---------- Export sur le téléphone (Mediabunny), pleine qualité, sans serveur ni logo ----------
   // Texte des légendes dessiné comme dans l'aperçu
   function drawCapText(g, W, H, text) {
@@ -1052,11 +1157,12 @@
       const out = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: "in-memory" }), target: new MB.BufferTarget() });
       const cv = document.createElement("canvas"); cv.width = EW; cv.height = EH;
       const g = cv.getContext("2d");
-      const vs = new MB.CanvasSource(cv, { codec: "avc", bitrate: MB.QUALITY_HIGH, keyFrameInterval: 2 });
+      await document.fonts.ready;
+      const vs = new MB.CanvasSource(cv, { codec: "avc", bitrate: 14e6, keyFrameInterval: 2 });   // ~ qualité appareil photo iPhone
       out.addVideoTrack(vs, { frameRate: FPS });
       say("Mixage du son…");
       const mix = await renderMix();
-      const as = new MB.AudioBufferSource({ codec: "aac", bitrate: MB.QUALITY_HIGH });
+      const as = new MB.AudioBufferSource({ codec: "aac", bitrate: 192e3 });
       out.addAudioTrack(as);
       await out.start();
       await as.add(mix);
@@ -1087,8 +1193,7 @@
           if (ovFrame[j]) drawOverlayImg(g, EW, EH, ovFrame[j], o);
         }
         // légendes
-        const cap = caps.find(c => tt >= c.start && tt < c.start + len(c));
-        if (cap) drawCapText(g, EW, EH, cap.text);
+        drawCaps(g, EW, EH, tt);
         await vs.add(tt, 1 / FPS);
         if (n % 10 === 0) say(`Export : ${Math.round(n / N * 100)} %`);
       }
