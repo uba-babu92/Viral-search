@@ -352,7 +352,8 @@ const mStatus = t => document.getElementById("montageStatus").textContent = t;
 
 // Liste des rushs, dans l'ordre du montage
 let rushes = [];
-document.getElementById("montagePrompt").value = localStorage.getItem("montagePrompt") || "";
+const VIRAL_PROMPT = "Montage TikTok viral, niveau pro, rythme très rapide.\nCoupe : enlève tous les blancs, les hésitations et les phrases répétées. Pas un temps mort.\nZooms : un gros zoom punch sur chaque mot fort, toutes les 2 à 3 secondes. Une secousse sur les moments choc. Un flash à chaque changement d'idée.\nGros textes : les mots clés en ÉNORMES majuscules, qui arrivent avec rebond, glissent ou tremblent. 1 à 3 mots maximum, couleurs vives, contour épais.\nMotion design qui illustre le sens de chaque mot : si je dis \"feu\", des flammes animées ; si je parle de montage, une table de montage animée (ligne du temps, clips qui glissent, curseur qui avance) ; si je parle d'argent, des billets ou un compteur qui monte ; si je cite un chiffre, il défile en grand ; si je parle d'un objet, d'une appli ou d'une image, dessine-le en illustration animée à côté de moi ; si je fais une liste, les points apparaissent un par un.\nAccroche : un titre choc animé dans la première seconde. Fin : un appel à l'action animé (« Abonne-toi », flèche, rebond).\nChaque animation est différente, propre et fluide, comme un monteur After Effects pro. Légendes style Boîte, en bas.";
+document.getElementById("montagePrompt").value = localStorage.getItem("montagePrompt") || VIRAL_PROMPT;
 document.getElementById("montageEdit").addEventListener("click", () => openEditor(rushes.slice()));
 document.getElementById("montageAdd").addEventListener("click", () => document.getElementById("montageFile").click());
 document.getElementById("montageFile").addEventListener("change", e => {

@@ -2006,7 +2006,7 @@ Si la demande est impossible, renvoie "actions":[] et explique dans "reponse".`;
     const lib = await libList().catch(() => []);
     let plan = null, note = "", blocs = [];
     const list = segs.map(s => `${s.id} (rush ${s.rush}, ${(s.out - s.in).toFixed(1)} s) : ${s.text ? "« " + s.text + " »" : "[plan sans parole]"}`).join("\n");
-    const ask = prompt || "montage TikTok très dynamique : coupe les blancs et les répétitions, zooms punch, animations de motion design sur les idées fortes, légendes style Boîte";
+    const ask = prompt || (typeof VIRAL_PROMPT !== "undefined" ? VIRAL_PROMPT : "montage TikTok très dynamique");
     // Claude : montage + animations sur mesure
     try {
       steps[2].label = "Claude crée ton montage et tes animations"; show();
