@@ -190,8 +190,7 @@
   $("camToEditor").onclick = () => {
     $("camChoice").classList.add("hidden");
     toMontage();
-    document.getElementById("montageStatus").textContent =
-      "✂️ Tes plans sont prêts. La table de montage arrive bientôt : pour l'instant, trie-les ici.";
+    openEditor(rushes.slice());
   };
   $("camSave").onclick = async () => {
     const fs = files();

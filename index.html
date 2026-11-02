@@ -193,7 +193,8 @@
   <input id="montageFile" type="file" accept="video/*" multiple class="hidden">
   <button class="main" id="montageAdd" style="background:#1c1c1c;border:1px solid #333;margin-bottom:8px">+ Ajouter des rushs</button>
   <div id="montageInfo" class="small"></div>
-  <button class="main" id="montageGo" disabled>Lancer le montage</button>
+  <button class="main" id="montageGo" disabled>🤖 Lancer le montage IA</button>
+  <button class="main alt" id="montageEdit" style="margin-top:8px" disabled>✂️ Table de montage</button>
   <div id="montageStatus" class="small">Choisis une vidéo, puis appuie sur le bouton.</div>
   <div id="montageResult"></div>
 </section>
@@ -295,6 +296,7 @@ const mStatus = t => document.getElementById("montageStatus").textContent = t;
 
 // Liste des rushs, dans l'ordre du montage
 let rushes = [];
+document.getElementById("montageEdit").addEventListener("click", () => openEditor(rushes.slice()));
 document.getElementById("montageAdd").addEventListener("click", () => document.getElementById("montageFile").click());
 document.getElementById("montageFile").addEventListener("change", e => {
   rushes.push(...[...e.target.files].map(f => ({ file: f, url: URL.createObjectURL(f) })));
@@ -329,6 +331,7 @@ async function makeThumbs() {
 function drawRushes() {
   const box = document.getElementById("montageInfo");
   document.getElementById("montageGo").disabled = !rushes.length;
+  document.getElementById("montageEdit").disabled = !rushes.length;
   box.innerHTML = rushes.length ? `<b>${rushes.length} rush(s). Glisse ☰ pour changer l'ordre.</b>` : "";
   rushes.forEach((r, i) => {
     const row = document.createElement("div");
@@ -384,6 +387,37 @@ function startDrag(e, row, from) {
   grip.addEventListener("pointercancel", end);
 }
 
+// Envoie un rush chez Shotstack (une seule fois) et renvoie son adresse en ligne
+async function uploadRush(r, tag, say) {
+  if (r.src) return r.src; // déjà envoyé
+  say(`Préparation (${tag})…`);
+  const up = await relay("/shotstack/upload", {});
+  say(`Envoi (${tag})…`);
+  const put = await fetch(up.data.attributes.url, { method: "PUT", body: new Blob([r.file]) });
+  if (!put.ok) throw new Error("envoi vidéo : " + put.status);
+  for (let i = 0; i < 120; i++) {
+    await sleep(3000);
+    const a = (await relay("/shotstack/source/" + up.data.id)).data.attributes;
+    say(`Réception (${tag}) : ${a.status}`);
+    if (a.status === "ready") return (r.src = a.source);
+    if (a.status === "failed") throw new Error(`Shotstack n'a pas pu lire la ${tag}`);
+  }
+  throw new Error("trop long, réessaie");
+}
+
+// Envoie un montage (timeline Shotstack) et attend la vidéo finale
+async function renderTimeline(timeline, say) {
+  const r = await relay("/shotstack/render", { timeline, output: { format: "mp4", size: { width: 1080, height: 1920 } } });
+  for (let i = 0; i < 200; i++) {
+    await sleep(4000);
+    const st = (await relay("/shotstack/render/" + r.response.id)).response;
+    say("Rendu : " + st.status);
+    if (st.status === "done") return st.url;
+    if (st.status === "failed") throw new Error(st.error || "rendu échoué");
+  }
+  throw new Error("rendu trop long, réessaie");
+}
+
 // Demande un rendu à Shotstack et attend la vidéo finale
 async function shotRender(srcs, captions) {
   const font = { family: "Montserrat ExtraBold", size: 64, color: "#ffffff", lineHeight: 0.9 };
@@ -392,18 +426,7 @@ async function shotRender(srcs, captions) {
   const captionTrack = { clips: srcs.map((_, i) => ({ asset: { type: "caption", src: `alias://v${i}`, font, background },
     start: `alias://v${i}`, length: `alias://v${i}`, position: "center" })) };
   mStatus("3/4 Montage demandé" + (captions ? " (avec sous-titres)…" : "…"));
-  const r = await relay("/shotstack/render", {
-    timeline: { tracks: captions ? [captionTrack, videoTrack] : [videoTrack] },
-    output: { format: "mp4", size: { width: 1080, height: 1920 } }
-  });
-  for (let i = 0; i < 200; i++) {
-    await sleep(4000);
-    const st = (await relay("/shotstack/render/" + r.response.id)).response;
-    mStatus("4/4 Rendu : " + st.status);
-    if (st.status === "done") return st.url;
-    if (st.status === "failed") throw new Error(st.error || "rendu échoué");
-  }
-  throw new Error("rendu trop long, réessaie");
+  return renderTimeline({ tracks: captions ? [captionTrack, videoTrack] : [videoTrack] }, t => mStatus("4/4 " + t));
 }
 
 async function relay(path, data) {
@@ -426,26 +449,7 @@ document.getElementById("montageGo").addEventListener("click", async () => {
   try {
     // 1-2. Envoi de chaque vidéo chez Shotstack
     const srcs = [];
-    for (let n = 0; n < files.length; n++) {
-      const tag = `vidéo ${n + 1}/${files.length}`;
-      if (list[n].src) { srcs.push(list[n].src); continue; } // déjà envoyée avant
-      mStatus(`1/4 Préparation (${tag})…`);
-      const up = await relay("/shotstack/upload", {});
-      mStatus(`2/4 Envoi (${tag})…`);
-      const put = await fetch(up.data.attributes.url, { method: "PUT", body: new Blob([files[n]]) });
-      if (!put.ok) throw new Error("envoi vidéo : " + put.status);
-      let src;
-      for (let i = 0; i < 120; i++) {
-        await sleep(3000);
-        const a = (await relay("/shotstack/source/" + up.data.id)).data.attributes;
-        mStatus(`2/4 Réception (${tag}) : ${a.status}`);
-        if (a.status === "ready") { src = a.source; break; }
-        if (a.status === "failed") throw new Error(`Shotstack n'a pas pu lire la ${tag}`);
-      }
-      if (!src) throw new Error("trop long, réessaie");
-      list[n].src = src;
-      srcs.push(src);
-    }
+    for (let n = 0; n < list.length; n++) srcs.push(await uploadRush(list[n], `vidéo ${n + 1}/${list.length}`, mStatus));
 
     // 3-4. Montage, d'abord avec sous-titres. Si pas de voix : on refait sans.
     let url;
@@ -460,7 +464,8 @@ document.getElementById("montageGo").addEventListener("click", async () => {
     mStatus(noCaption ? "✅ Terminé (sans sous-titres : pas de voix détectée)." : "✅ Terminé !");
     document.getElementById("montageResult").innerHTML =
       `<video src="${url}" controls playsinline style="width:100%;border-radius:8px"></video>
-       <a class="small" href="${url}" target="_blank" rel="noopener">Ouvrir / télécharger la vidéo</a>`;
+       <a class="small" href="${url}" target="_blank" rel="noopener">Ouvrir / télécharger la vidéo</a>
+       <button class="main alt" style="margin-top:8px" onclick="openEditor([{ url: '${url}', src: '${url}', file: { name: 'Montage IA' } }])">✂️ Retoucher dans la table de montage</button>`;
     return;
   } catch (e) {
     mStatus("❌ " + e.message);
@@ -839,5 +844,6 @@ function escapeHtml(s) {
 }
 </script>
 <script src="film.js"></script>
+<script src="editor.js"></script>
 </body>
 </html>

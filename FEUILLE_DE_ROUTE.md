@@ -9,7 +9,7 @@
 ## Montage façon CapCut (prochaine étape)
 - Après Film → « Suivant » : 🤖 Montage IA (puis retouche dans l'éditeur) ou ✂️ Table de montage directe.
 - Éditeur simple : vidéos (couper, déplacer), sons/musique, voix off, superpositions. Export via Shotstack.
-- Ordre : 1) vidéos + couper + exporter, 2) sons/musique/voix, 3) superpositions.
+- Ordre : 1) vidéos + couper + exporter ✅ fait, 2) sons/musique/voix ⏳, 3) superpositions ⏳.
 - Appli iPhone native (compte développeur Apple 99 $/an) si la caméra web ne suffit pas.
 - S'inspirer de l'ergonomie de CapCut (timeline, pistes, sous-titres animés, textes, coupes).
 - Pas de copie du code de CapCut : on reconstruit avec des outils libres.
