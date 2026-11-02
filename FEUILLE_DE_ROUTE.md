@@ -3,10 +3,14 @@
 ## But final : 4 étapes
 1. **Trouver** une vidéo virale (Recherche) ✅ fait
 2. **Script** : la vidéo virale est transcrite en texte, puis l'IA m'aide à la réécrire pour MA vidéo. (Chatbot ✅ fait, transcription automatique ⏳ à faire)
-3. **Film** (nouvelle rubrique) : l'IA découpe la vidéo virale plan par plan et me dit quoi filmer pour chaque plan, d'après mon script. ⏳
+3. **Film** : caméra simple plan par plan ✅ fait. Plus tard : afficher le plan à filmer d'après le script ⏳
 4. **Montage** : l'IA monte tout automatiquement, puis j'ouvre le résultat dans un éditeur style CapCut, très propre, pour retoucher. ⏳
 
-## Montage façon CapCut (plus tard, quand il y aura des crédits)
+## Montage façon CapCut (prochaine étape)
+- Après Film → « Suivant » : 🤖 Montage IA (puis retouche dans l'éditeur) ou ✂️ Table de montage directe.
+- Éditeur simple : vidéos (couper, déplacer), sons/musique, voix off, superpositions. Export via Shotstack.
+- Ordre : 1) vidéos + couper + exporter, 2) sons/musique/voix, 3) superpositions.
+- Appli iPhone native (compte développeur Apple 99 $/an) si la caméra web ne suffit pas.
 - S'inspirer de l'ergonomie de CapCut (timeline, pistes, sous-titres animés, textes, coupes).
 - Pas de copie du code de CapCut : on reconstruit avec des outils libres.
 

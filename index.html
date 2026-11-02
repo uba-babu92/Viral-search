@@ -2,10 +2,17 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Viral Finder (proto)</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Viral">
+<meta name="theme-color" content="#111111">
 <style>
-  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #111; color: #eee; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; padding-top: max(16px, env(safe-area-inset-top)); background: #111; color: #eee; }
   h1 { font-size: 20px; margin: 0 0 12px; }
   input, textarea { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #1c1c1c; color: #eee; font-size: 16px; margin-bottom: 8px; font-family: inherit; }
   textarea { min-height: 110px; }
@@ -34,6 +41,32 @@
   .rush .n { font-weight: bold; width: 18px; text-align: center; }
   .rush .name { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rush button { width: 34px; height: 34px; border: 1px solid #333; border-radius: 6px; background: #111; color: #eee; font-size: 16px; padding: 0; }
+  #cam { position: fixed; inset: 0; background: #000; z-index: 60; overflow: hidden; touch-action: none; }
+  #camVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #camVideo.mirror { transform: scaleX(-1); }
+  #cam .ctop { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; display: flex; align-items: center; gap: 10px; }
+  #cam .ctop button { width: 40px; height: 40px; border-radius: 20px; border: 0; background: #0006; color: #fff; font-size: 18px; flex-shrink: 0; }
+  #camBar { flex: 1; height: 5px; display: flex; gap: 2px; background: #fff3; border-radius: 3px; overflow: hidden; }
+  #camBar span { background: #fff; min-width: 2px; }
+  #camBar span.live { background: #ef4444; }
+  #camTime { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 48px); width: 100%; text-align: center; color: #fff; font-size: 13px; text-shadow: 0 1px 3px #000; }
+  #camMsg { position: absolute; top: 40%; left: 20px; right: 20px; text-align: center; background: #000a; color: #fff; padding: 12px; border-radius: 10px; }
+  #cam .cbottom { position: absolute; bottom: max(16px, env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  #camLenses { display: flex; gap: 8px; background: #0005; border-radius: 20px; padding: 4px; }
+  #camLenses:empty { display: none; }
+  #camLenses button { width: 38px; height: 38px; border-radius: 19px; border: 0; background: #0006; color: #fff; font-size: 12px; font-weight: 700; }
+  #camLenses button.on { color: #facc15; font-size: 13px; }
+  #cam .crow { width: 100%; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+  #camUndo { justify-self: center; width: 46px; height: 46px; border-radius: 23px; border: 0; background: #0006; font-size: 20px; }
+  #camNext { justify-self: center; padding: 10px 16px; border-radius: 22px; border: 0; background: #ef4444; color: #fff; font-size: 15px; font-weight: 700; }
+  #camShoot { grid-column: 2; width: 78px; height: 78px; border-radius: 50%; border: 5px solid #fff; background: #ef4444; transition: all .15s; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #camShoot.rec { width: 92px; height: 92px; border-color: #ef444488; background: #ef4444; border-radius: 30%; }
+  #cam .cmodes { display: flex; gap: 18px; }
+  #cam .cmodes button { border: 0; background: none; color: #fff9; font-size: 14px; font-weight: 600; text-shadow: 0 1px 3px #000; }
+  #cam .cmodes button.on { color: #fff; }
+  #camChoice { position: absolute; inset: 0; background: #0008; display: flex; align-items: flex-end; }
+  #camChoice .sheet { width: 100%; background: #1c1c1c; border-radius: 16px 16px 0 0; padding: 16px 16px max(16px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; }
+  button.main.alt { background: #2a2a2a; }
   #apiWarn { color: #f87171; font-size: 12px; margin: -6px 0 8px; }
   .msg { background: #1c1c1c; border-radius: 10px; padding: 12px; margin: 8px 0; font-size: 14px; white-space: pre-wrap; }
   .msg.me { background: #1e3a8a; }
@@ -68,6 +101,7 @@
 <div class="rubriques">
   <button id="rubRecherche" class="on">Recherche</button>
   <button id="rubScript">Script</button>
+  <button id="rubFilm">Film</button>
   <button id="rubMontage">Montage</button>
 </div>
 
@@ -118,6 +152,40 @@
     <div class="small"><a href="#" id="newScript" style="color:#888">Recommencer à zéro</a></div>
   </div>
 </section>
+
+<!-- ===== FILM ===== -->
+<section id="secFilm" class="hidden">
+  <button class="main" id="filmOpen">🎥 Ouvrir la caméra</button>
+  <div class="small">Filme plan par plan. Rien n'est posté : tes plans vont dans Montage ou dans ta galerie.</div>
+</section>
+
+<div id="cam" class="hidden">
+  <video id="camVideo" autoplay playsinline muted></video>
+  <div class="ctop">
+    <button id="camClose">✕</button>
+    <div id="camBar"></div>
+    <button id="camFlip">🔄</button>
+  </div>
+  <div id="camTime"></div>
+  <div id="camMsg" class="hidden"></div>
+  <div class="cbottom">
+    <div id="camLenses"></div>
+    <div class="crow">
+      <button id="camUndo" class="hidden">↩️</button>
+      <button id="camShoot"></button>
+      <button id="camNext" class="hidden">Suivant</button>
+    </div>
+    <div class="cmodes"><button id="camModeHold" class="on">Appui long</button><button id="camModeTap">Appui simple</button></div>
+  </div>
+  <div id="camChoice" class="hidden">
+    <div class="sheet">
+      <button class="main" id="camToAI">🤖 Montage IA</button>
+      <button class="main alt" id="camToEditor">✂️ Table de montage</button>
+      <button class="main alt" id="camSave">💾 Enregistrer dans ma galerie</button>
+      <button class="main alt" id="camChoiceClose">Continuer à filmer</button>
+    </div>
+  </div>
+</div>
 
 <!-- ===== MONTAGE ===== -->
 <section id="secMontage" class="hidden">
@@ -173,15 +241,17 @@ let mineOpen = false;
 
 // ----- Rubriques -----
 function setRubrique(r) {
-  const map = { recherche: "rubRecherche", script: "rubScript", montage: "rubMontage" };
+  const map = { recherche: "rubRecherche", script: "rubScript", film: "rubFilm", montage: "rubMontage" };
   for (const k in map) document.getElementById(map[k]).classList.toggle("on", k === r);
   document.getElementById("secRecherche").classList.toggle("hidden", r !== "recherche");
   document.getElementById("secScript").classList.toggle("hidden", r !== "script");
   document.getElementById("secMontage").classList.toggle("hidden", r !== "montage");
+  document.getElementById("secFilm").classList.toggle("hidden", r !== "film");
 }
 document.getElementById("rubRecherche").addEventListener("click", () => setRubrique("recherche"));
 document.getElementById("rubScript").addEventListener("click", () => setRubrique("script"));
 document.getElementById("rubMontage").addEventListener("click", () => setRubrique("montage"));
+document.getElementById("rubFilm").addEventListener("click", () => setRubrique("film"));
 
 // ----- Recherche : type Vidéos / Carrousels -----
 function setType(t) {
@@ -768,5 +838,6 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 </script>
+<script src="film.js"></script>
 </body>
 </html>
