@@ -18,7 +18,7 @@
 <style>
   /* ===== Palette ===== */
   :root { --coral: #FF5A4E; --beige: #F3EEE6; --white: #FFFFFF; --grey: #8A8A93; --ink: #141414; --line: #E7E0D5; }
-  body { font-family: "Inter", system-ui, -apple-system, sans-serif; margin: 0; padding: max(18px, env(safe-area-inset-top)) 16px calc(110px + env(safe-area-inset-bottom)); background: var(--beige); color: var(--ink); }
+  body { font-family: "Inter", system-ui, -apple-system, sans-serif; margin: 0; padding: max(18px, env(safe-area-inset-top)) 16px calc(96px + env(safe-area-inset-bottom)); background: var(--beige); color: var(--ink); }
   .apptop { display: flex; align-items: center; justify-content: space-between; margin: 4px 2px 14px; }
   .apptop .brandname { font-size: 15px; font-weight: 700; letter-spacing: -0.2px; display: flex; align-items: center; gap: 8px; }
   .apptop .dot { width: 10px; height: 10px; border-radius: 5px; background: var(--coral); }
@@ -27,7 +27,7 @@
   .card { background: var(--white); border-radius: 28px; padding: 18px; margin-bottom: 12px; }
   .card.ink { background: var(--ink); color: var(--white); }
   .label { font-size: 12px; color: var(--grey); margin-bottom: 6px; }
-  .hero { font-size: 31px; font-weight: 300; line-height: 1.08; letter-spacing: -0.8px; margin: 0 0 14px; }
+  .hero { font-size: 26px; font-weight: 300; line-height: 1.12; letter-spacing: -0.6px; margin: 0 0 16px; text-wrap: balance; hyphens: none; word-break: normal; }
   .hero b { font-weight: 800; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { font-size: 12px; background: var(--beige); color: var(--ink); border-radius: 999px; padding: 6px 11px; }
@@ -53,7 +53,7 @@
   #status { margin: 10px 4px; font-size: 14px; color: var(--grey); }
   #apiWarn { color: var(--coral); font-size: 12px; margin: -6px 2px 10px; }
   /* Barre du bas : les 4 pages */
-  .rubriques { position: fixed; left: 14px; right: 14px; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 40; display: flex; gap: 4px; background: var(--ink); border-radius: 30px; padding: 7px; box-shadow: 0 10px 30px #0003; }
+  .rubriques { position: fixed; left: 14px; right: 14px; bottom: max(8px, calc(env(safe-area-inset-bottom) - 20px)); z-index: 40; display: flex; gap: 4px; background: var(--ink); border-radius: 30px; padding: 7px; box-shadow: 0 10px 30px #0003; }
   .rubriques button { flex: 1; border: 0; background: none; color: #ffffff99; border-radius: 24px; padding: 9px 0 7px; font-size: 11px; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 3px; }
   .rubriques button.on { background: var(--coral); color: var(--white); }
   /* Résultats */
@@ -61,7 +61,7 @@
   .tile { position: relative; aspect-ratio: 9 / 16; background: var(--line); border-radius: 18px; overflow: hidden; display: block; }
   .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .overlay { position: absolute; top: 8px; left: 8px; display: flex; flex-direction: column; gap: 2px; font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px #000a; }
-  .overlay span:first-child { background: var(--coral); border-radius: 999px; padding: 2px 7px; text-shadow: none; align-self: flex-start; }
+  .overlay span:first-child { background: var(--coral); font-weight: 700; border-radius: 999px; padding: 2px 7px; text-shadow: none; align-self: flex-start; }
   #panel { background: var(--white); border-radius: 22px; padding: 16px; margin: 12px 0; font-size: 14px; line-height: 1.5; color: var(--ink); }
   #panel h2 { font-size: 16px; margin: 0 0 8px; }
   #panel .tag { color: var(--coral); }
@@ -144,7 +144,7 @@
 <section id="secRecherche">
  <div class="card">
   <div class="label">Recherche</div>
-  <h2 class="hero">Salut 👋<br>Trouve ta prochaine <b>vidéo virale.</b></h2>
+  <h2 class="hero">Trouve ta prochaine<br><b>vidéo virale.</b></h2>
   <div class="row">
     <input id="query" type="text" placeholder="Thématique (ex : sneakers)">
     <button class="plus" id="plusBtn" title="Ajouter ma vidéo">+</button>
@@ -174,10 +174,10 @@
 <section id="secScript" class="hidden">
  <div class="card">
   <div class="label">Script</div>
-  <h2 class="hero">Ton coach <b>vente</b> écrit pour toi.</h2>
+  <h2 class="hero">Ton coach <b>vente</b><br>écrit pour toi.</h2>
   <div class="modes">
-    <button id="modeCreer" class="on">✍️ Créer</button>
-    <button id="modeAdapter">🔁 Adapter</button>
+    <button id="modeCreer" class="on">Créer</button>
+    <button id="modeAdapter">Adapter</button>
   </div>
   <div id="boxCreer">
     <textarea id="ideaText" placeholder="Ton idée (ex : vlog de vacances dans les Vosges avec mon pote)"></textarea>
@@ -192,7 +192,7 @@
   <div id="scriptStatus" class="small"></div>
   <div id="chat"></div>
   <div id="replyBox" class="hidden">
-    <div class="row"><input id="replyText" type="text" placeholder="Ta réponse ou correction (ex : plus court)" style="background:#fff"><button class="plus" id="replyGo">➤</button></div>
+    <div class="row"><input id="replyText" type="text" placeholder="Ta réponse ou correction (ex : plus court)" style="background:#fff"><button class="plus" id="replyGo"></button></div>
     <div class="small"><a href="#" id="newScript" style="color:var(--grey)">Recommencer à zéro</a></div>
   </div>
 </section>
@@ -201,7 +201,7 @@
 <section id="secFilm" class="hidden">
  <div class="card">
   <div class="label">Film</div>
-  <h2 class="hero">Filme <b>plan par plan.</b></h2>
+  <h2 class="hero">Filme<br><b>plan par plan.</b></h2>
   <div class="chips"><span class="chip">Avant / arrière</span><span class="chip">0.5x · 1x · 3x</span><span class="chip">Appui long ou simple</span></div>
   <button class="bigshot" id="filmOpen" aria-label="Ouvrir la caméra"></button>
   <div class="small" style="text-align:center">Rien n'est posté : tes plans vont dans Montage ou dans ta galerie.</div>
@@ -213,14 +213,14 @@
   <div class="ctop">
     <button id="camClose">✕</button>
     <div id="camBar"></div>
-    <button id="camFlip">🔄</button>
+    <button id="camFlip"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg></button>
   </div>
   <div id="camTime"></div>
   <div id="camMsg" class="hidden"></div>
   <div class="cbottom">
     <div id="camLenses"></div>
     <div class="crow">
-      <button id="camUndo" class="hidden">↩️</button>
+      <button id="camUndo" class="hidden"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
       <button id="camShoot"></button>
       <button id="camNext" class="hidden">Suivant</button>
     </div>
@@ -228,9 +228,9 @@
   </div>
   <div id="camChoice" class="hidden">
     <div class="sheet">
-      <button class="main" id="camToAI">🤖 Montage IA</button>
-      <button class="main alt" id="camToEditor">✂️ Table de montage</button>
-      <button class="main alt" id="camSave">💾 Enregistrer dans ma galerie</button>
+      <button class="main" id="camToAI">Montage IA</button>
+      <button class="main alt" id="camToEditor">Table de montage</button>
+      <button class="main alt" id="camSave">Enregistrer dans ma galerie</button>
       <button class="main alt" id="camChoiceClose">Continuer à filmer</button>
     </div>
   </div>
@@ -240,13 +240,13 @@
 <section id="secMontage" class="hidden">
  <div class="card">
   <div class="label">Montage</div>
-  <h2 class="hero">Monte ta vidéo <b>en un geste.</b></h2>
+  <h2 class="hero">Monte ta vidéo<br><b>en un geste.</b></h2>
   <textarea id="montagePrompt" class="hidden">Sous-titres, texte à l'écran en gros, sans musique.</textarea>
   <input id="montageFile" type="file" accept="video/*" multiple class="hidden">
   <button class="main alt" id="montageAdd" style="margin-bottom:10px">+ Ajouter des rushs</button>
   <div id="montageInfo" class="small"></div>
-  <button class="main" id="montageGo" disabled>🤖 Lancer le montage IA</button>
-  <button class="main alt" id="montageEdit" style="margin-top:8px" disabled>✂️ Table de montage</button>
+  <button class="main" id="montageGo" disabled>Lancer le montage IA</button>
+  <button class="main alt" id="montageEdit" style="margin-top:8px" disabled>Table de montage</button>
   <div id="montageStatus" class="small">Ajoute tes rushs, puis choisis : montage IA (avec légendes) ou table de montage.</div>
   <div id="montageResult"></div>
  </div>
@@ -262,7 +262,7 @@
     <textarea id="viewerBrand" class="brand" placeholder="Ta marque / ton sujet : qui tu es, ce que tu vends ou mets en avant, ton style, ton public…"></textarea>
     <button class="main" id="viewerGo">Adapter</button>
     <div id="viewerStatus" class="small"></div>
-    <details id="viewerAnalyseBox"><summary>📊 Analyser le style</summary><div id="viewerAnalyse"></div></details>
+    <details id="viewerAnalyseBox"><summary>Analyser le style</summary><div id="viewerAnalyse"></div></details>
   </div>
 </div>
 
@@ -286,7 +286,7 @@ function checkCredit(service, status, text) {
   if (status === 402 || status === 429 || /credit|quota|insufficient|limit exceeded|usage limit|payment|balance/.test(t)) {
     blocked.add(service);
     const w = document.getElementById("apiWarn");
-    w.textContent = "⚠ Plus de crédit : " + [...blocked].join(", ");
+    w.textContent = "Plus de crédit : " + [...blocked].join(", ");
     w.classList.remove("hidden");
   }
 }
@@ -393,9 +393,9 @@ function drawRushes() {
     const row = document.createElement("div");
     row.className = "rush";
     row.innerHTML = `<span class="n">${i + 1}</span>
-      ${r.thumb ? `<img class="th" src="${r.thumb}" alt="">` : `<span class="th">🎬</span>`}
+      ${r.thumb ? `<img class="th" src="${r.thumb}" alt="">` : `<span class="th"></span>`}
       <span class="name">${escapeHtml(r.file.name)}<br>${(r.file.size / 1e6).toFixed(1)} Mo</span>
-      <button class="del">❌</button><span class="grip">☰</span>`;
+      <button class="del"></button><span class="grip">☰</span>`;
     row.querySelector(".del").onclick = () => { URL.revokeObjectURL(r.url); rushes.splice(i, 1); drawRushes(); };
     row.querySelector(".grip").addEventListener("pointerdown", e => startDrag(e, row, i));
     box.appendChild(row);
@@ -573,7 +573,7 @@ function addMsg(text, me) {
     const b = document.createElement("button");
     b.textContent = "Copier";
     const plain = text.replace(/\*\*(.+?)\*\*/g, "$1").replace(/^#{1,4}\s*/gm, "");
-    b.onclick = () => navigator.clipboard.writeText(plain).then(() => b.textContent = "Copié ✅");
+    b.onclick = () => navigator.clipboard.writeText(plain).then(() => b.textContent = "Copié ");
     d.appendChild(document.createElement("br"));
     d.appendChild(b);
   }
@@ -596,7 +596,7 @@ async function askAI(content, shown) {
     document.getElementById("replyBox").classList.remove("hidden");
   } catch (e) {
     chat.pop();
-    st.textContent = "❌ " + e.message;
+    st.textContent = "" + e.message;
   } finally {
     document.querySelectorAll("#creerGo, #adapterGo, #replyGo").forEach(b => b.disabled = false);
   }
@@ -651,7 +651,7 @@ function openViewer(i) {
   document.getElementById("viewerAnalyseBox").open = false;
   analyse(i, document.getElementById("viewerAnalyse"));
   document.getElementById("viewerInfo").innerHTML =
-    `👁 ${fmtNum(v.views)} · ♥ ${fmtNum(v.likes)}${v.duration ? " · " + fmtDuration(v.duration) : ""}${isPhoto ? " · 🖼 " + v.images.length : ""} · <a href="${v.url}" target="_blank" rel="noopener" style="color:#888">Ouvrir sur TikTok</a>`;
+    `${fmtNum(v.views)} · ♥ ${fmtNum(v.likes)}${v.duration ? " · " + fmtDuration(v.duration) : ""}${isPhoto ? " · " + v.images.length : ""} · <a href="${v.url}" target="_blank" rel="noopener" style="color:#888">Ouvrir sur TikTok</a>`;
   document.getElementById("viewerStatus").textContent = "";
   document.getElementById("viewer").classList.remove("hidden");
   document.body.style.overflow = "hidden";
@@ -730,8 +730,8 @@ document.getElementById("viewerGo").onclick = async () => {
   document.getElementById("adapterGo").click();
   const note = document.createElement("div");
   note.className = "small";
-  note.textContent = transcript ? `✅ Texte de la vidéo récupéré (${source}).`
-    : `ℹ️ Impossible d'écouter cette vidéo${why ? " (" + why.slice(0, 80) + ")" : ""} : j'utilise seulement sa description.`;
+  note.textContent = transcript ? `Texte de la vidéo récupéré (${source}).`
+    : `Impossible d'écouter cette vidéo${why ? " (" + why.slice(0, 80) + ")" : ""} : j'utilise seulement sa description.`;
   document.getElementById("chat").prepend(note);
 };
 
@@ -855,8 +855,8 @@ function render(list) {
   results.innerHTML = '<div class="grid">' + list.map((v, i) => {
     const sameLength = !isCarousel && myVideo && Math.abs(v.duration - myVideo.duration) <= 3;
     const lines = isCarousel
-      ? `<span>👁 ${fmtNum(v.views)}</span><span>🖼 ${v.count}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`
-      : `<span>👁 ${fmtNum(v.views)}</span><span>${fmtDuration(v.duration)}${sameLength ? " ✓" : ""}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`;
+      ? `<span>${fmtNum(v.views)}</span><span>${v.count}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`
+      : `<span>${fmtNum(v.views)}</span><span>${fmtDuration(v.duration)}${sameLength ? " ✓" : ""}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`;
     const btn = "";
     return `
     <div class="tile">
@@ -889,7 +889,7 @@ function analyse(idx, target) {
     <div class="grid">${similar.map(o => `
       <a class="tile" href="#" onclick="openViewer(${items.indexOf(o)});return false">
         ${o.cover ? `<img src="${o.cover}" alt="">` : ""}
-        <div class="overlay"><span>👁 ${fmtNum(o.views)}</span></div>
+        <div class="overlay"><span>${fmtNum(o.views)}</span></div>
       </a>`).join("") || "<div>Aucune vidéo similaire dans les résultats.</div>"}</div>`;
   if (!target) panel.scrollIntoView({ behavior: "smooth" });
 }

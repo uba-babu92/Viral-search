@@ -278,7 +278,7 @@
     clips.forEach((c, i) => {
       const cw = Math.max(6, len(c) * PPS), on = sel && sel.type === "v" && sel.i === i;
       const bg = c.ref.thumb ? `background-image:url(${c.ref.thumb});` : "";
-      const badge = [sp(c) !== 1 ? "x" + sp(c) : "", c.vol === 0 ? "🔇" : ""].filter(Boolean).join(" ");
+      const badge = [sp(c) !== 1 ? "x" + sp(c) : "", c.vol === 0 ? "" : ""].filter(Boolean).join(" ");
       html += `<div class="eclip${on ? " sel" : ""}" data-k="v" data-i="${i}" style="left:${x}px;top:${VIDEO_Y}px;width:${cw}px;height:${VIDEO_H}px;${bg}"><span>${fmt(len(c))}</span>${badge ? `<em>${badge}</em>` : ""}
         ${on ? `<div class="ehandle l" data-h="l">‹</div><div class="ehandle r" data-h="r">›</div>` : ""}</div>`;
       x += cw;
@@ -922,9 +922,9 @@
       sel = null;
       if (!caps.length) return sheet(`<div>Aucune parole entendue dans la vidéo.</div>`);
       closeSheet(); draw(); seek(t);
-      toast("✅ Légendes prêtes : touche-les pour corriger, glisse-les sur l'écran", 3500);
+      toast("Légendes prêtes : touche-les pour corriger, glisse-les sur l'écran", 3500);
     } catch (err) {
-      sheet(`<div style="color:#f87171">❌ ${esc(err.message)}</div>`);
+      sheet(`<div style="color:#f87171">${esc(err.message)}</div>`);
     }
   }
   // Avec le temps de chaque mot : blocs de 1 à 3 mots (effet karaoké)
@@ -1118,7 +1118,7 @@
     }
     [...audios, ...overlays, ...caps].forEach(x => { if (x.start >= at - 0.01) x.start += added; });   // le reste suit
     sel = null; resetPlayers(); draw(); seek(at + added);   // la barre passe après le nouveau rush
-    toast("Rush ajouté ✅");
+    toast("Rush ajouté ");
   }
   function openFullCamera() {
     pause();
@@ -1354,9 +1354,9 @@
       await out.finalize();
       const file = new File([out.target.buffer], "montage.mp4", { type: "video/mp4" });
       const url = URL.createObjectURL(file);
-      sheet(`<div>✅ Vidéo prête ! (${(file.size / 1e6).toFixed(1)} Mo)</div>
+      sheet(`<div>Vidéo prête ! (${(file.size / 1e6).toFixed(1)} Mo)</div>
         <video src="${url}" controls playsinline style="width:100%;max-height:50vh;border-radius:8px;background:#000"></video>
-        <button class="main" id="edSave">💾 Enregistrer dans mes photos</button>
+        <button class="main" id="edSave">Enregistrer dans mes photos</button>
         <a style="display:block;text-align:center;color:#888;font-size:13px" href="${url}" download="montage.mp4">Télécharger le fichier</a>`);
       $("edSave").onclick = async () => {
         try {
@@ -1365,7 +1365,7 @@
         } catch (e) { /* annulé */ }
       };
     } catch (err) {
-      sheet(`<div style="color:#f87171">❌ Export : ${esc(err.message || String(err))}</div>`);
+      sheet(`<div style="color:#f87171">Export : ${esc(err.message || String(err))}</div>`);
     } finally {
       exporting = false;
     }
