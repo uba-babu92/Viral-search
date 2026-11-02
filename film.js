@@ -132,6 +132,7 @@
     timer = setInterval(drawClips, 100);
   }
   function stopRec() {
+    latched = false;
     if (!recorder) return;
     clearInterval(timer);
     $("camShoot").classList.remove("rec");
@@ -139,13 +140,22 @@
   }
 
   const shoot = $("camShoot");
+  // Un seul bouton, deux façons de filmer (comme TikTok) :
+  // - tu maintiens : ça filme tant que tu restes appuyé ;
+  // - tu touches juste : ça filme en continu, et tu retouches pour arrêter.
+  let pressAt = 0, latched = false;
   shoot.addEventListener("pointerdown", e => {
     e.preventDefault();
-    if (mode === "hold") startRec();
-    else recorder ? stopRec() : startRec();
+    if (latched) { latched = false; stopRec(); return; }   // 2e toucher : on arrête
+    pressAt = Date.now();
+    startRec();
   });
   ["pointerup", "pointercancel", "pointerleave"].forEach(ev =>
-    shoot.addEventListener(ev, () => { if (mode === "hold") stopRec(); }));
+    shoot.addEventListener(ev, () => {
+      if (!recorder || latched) return;
+      if (ev === "pointerup" && Date.now() - pressAt < 350) { latched = true; return; }   // simple toucher : on continue
+      stopRec();
+    }));
   shoot.addEventListener("contextmenu", e => e.preventDefault());
 
   // ----- Barre des plans -----
@@ -161,13 +171,7 @@
 
   $("camUndo").onclick = () => { clips.pop(); drawClips(); };
 
-  function setMode(m) {
-    mode = m;
-    $("camModeHold").classList.toggle("on", m === "hold");
-    $("camModeTap").classList.toggle("on", m === "tap");
-  }
-  $("camModeHold").onclick = () => setMode("hold");
-  $("camModeTap").onclick = () => setMode("tap");
+  // (les deux modes sont maintenant sur le même bouton)
 
   // ----- Suivant : Montage IA, Table de montage, ou Galerie -----
   function files() {
