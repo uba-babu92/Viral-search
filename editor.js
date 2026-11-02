@@ -100,6 +100,8 @@
   .elib button.add { background: #fff; color: #000; }
   .estops { display: flex; justify-content: space-between; font-size: 11px; color: #888; }
   .ebig { text-align: center; font-size: 28px; font-weight: 700; }
+  .espin { display: inline-block; width: 12px; height: 12px; border: 2px solid #555; border-top-color: #FF5A4E; border-radius: 50%; animation: espin .8s linear infinite; }
+  @keyframes espin { to { transform: rotate(360deg); } }
   #edToast { position: absolute; top: 35%; left: 20px; right: 20px; text-align: center; background: #000c; color: #fff; padding: 12px; border-radius: 10px; z-index: 9; pointer-events: none; }
   </style>`);
 
@@ -214,7 +216,7 @@
       seek(0);
     }
     if (opts.message) toast(opts.message, 4000);
-    if (opts.captions && !caps.length) setTimeout(() => captionSheet(true), 600);   // légendes déjà faites : on ne redemande pas
+    if (opts.ai) setTimeout(aiMontage, 300);   // Montage IA : écoute, coupe des blancs, légendes
   };
   $("edClose").onclick = () => { pause(); $("ed").classList.add("hidden"); document.body.style.overflow = ""; };
 
@@ -1168,6 +1170,87 @@
   }
   function closeSheet() { $("edSheet").classList.add("hidden"); }
   $("edSheetClose").onclick = () => { closeSheet(); draw(); };
+
+  // ---------- Montage IA : écoute, coupe des blancs, légendes ----------
+  const AI_GAP = 0.35, AI_PAD_IN = 0.12, AI_PAD_OUT = 0.18;   // réglages de coupe (secondes)
+  function aiSheet(steps, foot = "") {
+    const icon = s => s.st === "done" ? `<span style="color:#4ade80">✓</span>` : s.st === "fail" ? `<span style="color:#FF5A4E">✕</span>` : s.st === "doing" ? `<span class="espin"></span>` : `<span style="color:#555">○</span>`;
+    sheet(`<div style="font-size:20px;font-weight:700;margin-bottom:4px">Montage IA</div>
+      ${steps.map(s => `<div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0"><div style="width:18px;text-align:center">${icon(s)}</div>
+        <div><div style="color:${s.st === "wait" ? "#777" : "#fff"}">${s.label}</div>${s.info ? `<div style="font-size:12px;color:#999;margin-top:2px">${esc(s.info)}</div>` : ""}</div></div>`).join("")}
+      ${foot}`, false);
+  }
+  async function aiMontage() {
+    pause();
+    const steps = [
+      { label: "Préparation de tes rushs", st: "doing" },
+      { label: "Écoute de ce que tu dis", st: "wait" },
+      { label: "Coupe des blancs et des hésitations", st: "wait" },
+      { label: "Ajout des légendes", st: "wait" },
+    ];
+    const show = () => aiSheet(steps);
+    show();
+    const before = total();
+    let cutsDone = 0, words = null;
+    try {
+      for (const c of clips) { await media(c.ref); await decodeAudio(c.ref); }
+      steps[0].st = "done"; steps[0].info = `${clips.length} rush(s), ${before.toFixed(1)} s`;
+      steps[1].st = "doing"; show();
+      const data = await groqTranscribe(await mixAudio(), true);
+      words = (data.words || []).map(w => ({ w: String(w.word).trim(), s: +w.start, e: +w.end })).filter(w => w.w);
+      if (!words.length) throw new Error("aucune parole entendue dans tes rushs");
+      steps[1].st = "done"; steps[1].info = `${words.length} mots entendus`;
+    } catch (e) {
+      const i = steps.findIndex(s => s.st === "doing");
+      steps[i].st = "fail"; steps[i].info = e.message;
+      for (let j = i + 1; j < steps.length; j++) { steps[j].st = "fail"; steps[j].info = "pas possible sans l'étape d'avant"; }
+      draw(); seek(0);
+      return aiSheet(steps, `<div class="small" style="color:#aaa">Tes rushs sont quand même à la suite dans l'éditeur.</div>
+        <button class="main" id="aiOk">Voir mes rushs</button>`), ($("aiOk").onclick = () => { closeSheet(); seek(0); });
+    }
+    // Coupe : on ne garde que les moments où tu parles (avec un peu de marge)
+    steps[2].st = "doing"; show();
+    save();
+    const newClips = [], mapped = [];
+    let at = 0;
+    clips.forEach((c, i) => {
+      const s0 = startOf(i), s1 = s0 + len(c);
+      const inside = words.filter(w => w.s < s1 && w.e > s0);
+      if (!inside.length || sp(c) !== 1) {   // pas de parole (plan d'illustration) : on garde tel quel
+        newClips.push({ ...c }); at += len(c); return;
+      }
+      // regroupe les mots proches en morceaux de parole
+      const parts = [];
+      inside.forEach(w => {
+        const a = Math.max(c.in, c.in + (w.s - s0) - AI_PAD_IN), b = Math.min(c.out, c.in + (w.e - s0) + AI_PAD_OUT);
+        const last = parts[parts.length - 1];
+        if (last && a - last.out <= AI_GAP) last.out = Math.max(last.out, b), last.words.push(w);
+        else parts.push({ in: a, out: b, words: [w] });
+      });
+      parts.forEach(p => {
+        newClips.push({ ...c, in: +p.in.toFixed(3), out: +p.out.toFixed(3) });
+        p.words.forEach(w => mapped.push({ word: w.w, start: at + (c.in + (w.s - s0)) - p.in, end: at + (c.in + (w.e - s0)) - p.in }));
+        at += p.out - p.in;
+      });
+      cutsDone += parts.length - 1 + (parts[0].in > c.in + 0.05 ? 1 : 0) + (parts[parts.length - 1].out < c.out - 0.05 ? 1 : 0);
+    });
+    clips = newClips;
+    resetPlayers();
+    const gain = before - total();
+    steps[2].st = "done"; steps[2].info = cutsDone ? `${cutsDone} coupe(s), ${gain.toFixed(1)} s de blanc retirées` : "rien à couper, c'était déjà propre";
+    // Légendes, calées sur le nouveau montage
+    steps[3].st = "doing"; show();
+    caps = chunkWords(mapped.map(m => ({ word: m.word, start: Math.max(0, m.start), end: Math.max(m.start + 0.05, m.end) })));
+    capStyle.style = capStyle.style || "box";
+    steps[3].st = "done"; steps[3].info = `${caps.length} légendes (style ${CAP_STYLES.find(s => s[0] === capStyle.style)[1]})`;
+    sel = null; draw(); seek(0);
+    aiSheet(steps, `<div style="margin-top:6px;font-size:15px">Ton montage est prêt : <b>${total().toFixed(1)} s</b>${gain > 0.05 ? ` (au lieu de ${before.toFixed(1)} s)` : ""}.</div>
+      <button class="main" id="aiPlay">Regarder</button>
+      <button class="main alt" id="aiExport">Exporter directement</button>
+      <div class="small" style="color:#999">Tu peux tout retoucher dans l'éditeur, et annuler avec ↶.</div>`);
+    $("aiPlay").onclick = () => { closeSheet(); seek(0); play(); };
+    $("aiExport").onclick = () => { closeSheet(); $("edExport").click(); };
+  }
 
   // ---------- Légendes : styles animés (dessinés pareil dans l'aperçu et l'export) ----------
   const CAP_STYLES = [["box", "Boîte"], ["karaoke", "Karaoké"], ["pop", "Pop"], ["classic", "Classique"]];
