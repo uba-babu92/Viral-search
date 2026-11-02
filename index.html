@@ -433,8 +433,8 @@ document.getElementById("montageGo").addEventListener("click", () => {
   openEditor(rushes.slice(), { captions: true, message: "🤖 Montage IA : plans à la suite + sous-titres auto. Retouche, puis Exporter." });
 });
 
-// ----- Script : coach d'écriture IA (via le relais) -----
-const AI_MODEL = "mistral/mistral-small";
+// ----- Script : coach d'écriture IA (Mistral, via le relais) -----
+const AI_MODEL = "mistral-small-latest";
 const RULES = `Règles d'un bon script de vidéo courte (TikTok, Reels) :
 - Accroche dans les 2 premières secondes : une phrase choc, une question ou une promesse.
 - Rythme rapide : phrases courtes, une idée par plan, une relance toutes les 3 à 5 secondes.

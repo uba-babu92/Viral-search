@@ -1,6 +1,6 @@
 // ===== TABLE DE MONTAGE (style CapCut, version simple) =====
 // Vidéos : glisser pour déplacer (appui long), poignées pour rallonger/raccourcir, diviser, supprimer.
-// Sons : effets intégrés, import de son/musique, voix off. Sous-titres auto (IA). Export via Shotstack.
+// Sons : effets intégrés, voix off (pas de musique : elle s'ajoute sur TikTok). Sous-titres auto (IA). Export via Shotstack.
 (() => {
   const PPS = 60;                 // pixels par seconde
   const VIDEO_Y = 24, VIDEO_H = 60, ROW_H = 30;
@@ -75,7 +75,6 @@
       <button data-t="del"><b>🗑</b>Supprimer</button>
     </div>
     <input id="edFile" type="file" accept="video/*" multiple class="hidden">
-    <input id="edAudioFile" type="file" accept="audio/*,video/*" class="hidden">
     <div id="edToast" class="hidden"></div>
     <div id="edSheet" class="hidden"><div class="sheet"><div id="edSheetBody"></div><button class="main alt" id="edSheetClose">Fermer</button></div></div>
   </div>`);
@@ -464,8 +463,7 @@
   function soundSheet() {
     sheet(`<b>Effets sonores</b>
       <div class="esfx">${SFX.map(([id, label]) => `<div><button data-p="${id}">${label}</button><button class="add" data-s="${id}">＋</button></div>`).join("")}</div>
-      <button class="main" id="edImport">🎵 Importer un son ou une musique</button>
-      <div class="small">Ajouté à l'endroit de la barre blanche. Les musiques Apple Music ne peuvent pas être importées (protégées).</div>`);
+      <div class="small">Ajouté à l'endroit de la barre blanche.</div>`);
     const preview = new Audio();
     $("edSheetBody").querySelectorAll("[data-p]").forEach(b => b.onclick = () => { preview.src = SITE + "sfx/" + b.dataset.p + ".wav"; preview.play().catch(() => {}); });
     $("edSheetBody").querySelectorAll("[data-s]").forEach(b => b.onclick = () => {
@@ -475,15 +473,7 @@
       addAudio(ref, "sfx", t);
       closeSheet();
     });
-    $("edImport").onclick = () => $("edAudioFile").click();
   }
-  $("edAudioFile").addEventListener("change", e => {
-    const f = e.target.files[0];
-    e.target.value = "";
-    if (!f) return;
-    closeSheet();
-    addAudio({ file: f, url: URL.createObjectURL(f), label: "🎵 " + f.name.replace(/\.[^.]+$/, "") }, "music", t);
-  });
 
   // ----- Voix off -----
   let voiceRec = null, voiceStream = null, voiceStart = 0, voiceChunks = [], voiceTime = 0;

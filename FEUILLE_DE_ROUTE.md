@@ -23,7 +23,7 @@
 
 ## À faire lundi (par toi)
 - Cloudflare : recopier relay/worker.js dans viral-relais puis Déployer (pour la transcription).
-- Clé IA : choisir Mistral (gratuit, sans carte) ou carte sur Vercel.
+- Clé IA : créer une clé Mistral (console.mistral.ai, plan gratuit Experiment) et la mettre dans AI_KEY sur Cloudflare.
 - Apify : regarder le prix et les options (« vues minimum », « tri par popularité ») du scraper mu0i.
 
 ## Baisser le prix de la recherche

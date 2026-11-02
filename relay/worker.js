@@ -1,5 +1,5 @@
 // Relais sécurisé : les clés restent dans Cloudflare (variables), jamais dans la page.
-// Variables : APIFY_KEY, SHOTSTACK_KEY, SHOTSTACK_ENV ("stage" pour tester, "v1" pour le vrai), AI_KEY (Vercel AI Gateway).
+// Variables : APIFY_KEY, SHOTSTACK_KEY, SHOTSTACK_ENV ("stage" pour tester, "v1" pour le vrai), AI_KEY (clé Mistral).
 const ALLOWED_ORIGIN = "https://uba-babu92.github.io";
 // Seuls ces scrapers Apify sont autorisés
 const APIFY_ACTORS = ["mu0i~tiktok-search-scraper", "scrapingmonkey~tiktok-scraper"];
@@ -37,7 +37,7 @@ export default {
     let m, upstream;
 
     if (p === "/ai" && request.method === "POST") {
-      upstream = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
+      upstream = await fetch("https://api.mistral.ai/v1/chat/completions", {
         method: "POST",
         headers: { "Authorization": `Bearer ${env.AI_KEY}`, "Content-Type": "application/json" },
         body,
