@@ -514,11 +514,13 @@ function adaptVideo(i) {
 function addMsg(text, me) {
   const d = document.createElement("div");
   d.className = "msg" + (me ? " me" : "");
-  d.textContent = text;
+  // **gras** affiché en gras, sans les étoiles
+  d.innerHTML = escapeHtml(text).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^#{1,4}\s*/gm, "");
   if (!me) {
     const b = document.createElement("button");
     b.textContent = "Copier";
-    b.onclick = () => navigator.clipboard.writeText(text).then(() => b.textContent = "Copié ✅");
+    const plain = text.replace(/\*\*(.+?)\*\*/g, "$1").replace(/^#{1,4}\s*/gm, "");
+    b.onclick = () => navigator.clipboard.writeText(plain).then(() => b.textContent = "Copié ✅");
     d.appendChild(document.createElement("br"));
     d.appendChild(b);
   }
@@ -652,8 +654,20 @@ document.getElementById("viewerGo").onclick = async () => {
   const brand = document.getElementById("viewerBrand").value.trim();
   const st = document.getElementById("viewerStatus");
   if (!brand) { st.textContent = "Explique d'abord ta marque / ton sujet juste au-dessus."; return; }
-  st.textContent = "Transcription en cours…";
-  const transcript = await getTranscript(v);
+  st.textContent = "Recherche des sous-titres…";
+  let transcript = await getTranscript(v), source = "sous-titres TikTok", why = "";
+  if (!transcript) {   // pas de sous-titres : on récupère la vidéo et Groq écoute ce qui est dit
+    try {
+      st.textContent = "Récupération de la vidéo TikTok…";
+      const r = await fetch(`${RELAY}/tiktok-video?url=${encodeURIComponent(v.url)}`);
+      if (!r.ok) throw new Error(await r.text());
+      const d = decodeURIComponent(r.headers.get("X-Desc") || "");
+      if (d && !v.text) v.text = d;
+      st.textContent = "Groq écoute la vidéo…";
+      transcript = await transcribeBlob(await r.blob());
+      source = "vidéo écoutée par Groq";
+    } catch (e) { why = e.message; }
+  }
   closeViewer();
   setRubrique("script");
   setScriptMode("adapter");
@@ -663,8 +677,8 @@ document.getElementById("viewerGo").onclick = async () => {
   document.getElementById("adapterGo").click();
   const note = document.createElement("div");
   note.className = "small";
-  note.textContent = transcript ? "✅ Texte de la vidéo récupéré (sous-titres TikTok)."
-    : "ℹ️ Pas de sous-titres trouvés pour cette vidéo : j'utilise seulement sa description.";
+  note.textContent = transcript ? `✅ Texte de la vidéo récupéré (${source}).`
+    : `ℹ️ Impossible d'écouter cette vidéo${why ? " (" + why.slice(0, 80) + ")" : ""} : j'utilise seulement sa description.`;
   document.getElementById("chat").prepend(note);
 };
 

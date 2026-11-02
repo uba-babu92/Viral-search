@@ -913,22 +913,7 @@
       say("Préparation du son…");
       const wav = await mixAudio();
       say("Transcription…");
-      let res, txt;
-      for (const model of ["whisper-large-v3-turbo", "whisper-large-v3"]) {   // si Groq retire un modèle, on essaie l'autre
-        const fd = new FormData();
-        fd.append("file", new File([wav], "son.wav", { type: "audio/wav" }));
-        fd.append("model", model);
-        fd.append("response_format", "verbose_json");
-        fd.append("language", "fr");
-        fd.append("timestamp_granularities[]", "word");
-        fd.append("timestamp_granularities[]", "segment");
-        res = await fetch(RELAY + "/transcribe", { method: "POST", body: fd });
-        txt = await res.text();
-        if (res.ok || !((res.status === 404 || res.status === 400) && /model/i.test(txt))) break;
-      }
-      if (!res.ok) { if (typeof checkCredit === "function") checkCredit("IA", res.status, txt); let why = txt; try { why = JSON.parse(txt).error.message || txt; } catch (e) {}
-        throw new Error(`Groq a refusé (${res.status}) : ${String(why).slice(0, 160)}` + (res.status === 401 ? " → la clé dans AI_KEY n'est pas acceptée" : "")); }
-      const data = JSON.parse(txt);
+      const data = await groqTranscribe(wav, true);
       const segs = data.segments && data.segments.length ? data.segments : [{ text: data.text || "", start: 0, end: total() }];
       save();
       caps = data.words && data.words.length ? chunkWords(data.words) : chunk(segs);
@@ -995,7 +980,9 @@
       const b = await decode(a.ref);
       if (b) { const s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(a.start, a.in, a.out - a.in); }
     }
-    const pcm = (await ctx.startRendering()).getChannelData(0);
+    return encodeWav((await ctx.startRendering()).getChannelData(0), SR);
+  }
+  function encodeWav(pcm, SR) {
     const view = new DataView(new ArrayBuffer(44 + pcm.length * 2));
     const w = (o, s) => [...s].forEach((ch, i) => view.setUint8(o + i, ch.charCodeAt(0)));
     w(0, "RIFF"); view.setUint32(4, 36 + pcm.length * 2, true); w(8, "WAVE"); w(12, "fmt ");
@@ -1005,6 +992,38 @@
     pcm.forEach((v, i) => view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, v)) * 32767, true));
     return new Blob([view], { type: "audio/wav" });
   }
+  // Envoie un son WAV à Groq et renvoie la réponse (essaie un autre modèle si besoin)
+  async function groqTranscribe(wav, verbose) {
+    let res, txt;
+    for (const model of ["whisper-large-v3-turbo", "whisper-large-v3"]) {
+      const fd = new FormData();
+      fd.append("file", new File([wav], "son.wav", { type: "audio/wav" }));
+      fd.append("model", model);
+      fd.append("response_format", "verbose_json");
+      fd.append("language", "fr");
+      if (verbose) { fd.append("timestamp_granularities[]", "word"); fd.append("timestamp_granularities[]", "segment"); }
+      res = await fetch(RELAY + "/transcribe", { method: "POST", body: fd });
+      txt = await res.text();
+      if (res.ok || !((res.status === 404 || res.status === 400) && /model/i.test(txt))) break;
+    }
+    if (!res.ok) { if (typeof checkCredit === "function") checkCredit("IA", res.status, txt); let why = txt; try { why = JSON.parse(txt).error.message || txt; } catch (e) {}
+      throw new Error(`Groq a refusé (${res.status}) : ${String(why).slice(0, 160)}` + (res.status === 401 ? " → la clé dans AI_KEY n'est pas acceptée" : "")); }
+    return JSON.parse(txt);
+  }
+  // Transcrit n'importe quelle vidéo (ex. une vidéo TikTok) : utilisé par la page Recherche
+  window.transcribeBlob = async blob => {
+    await loadMB();
+    const input = new MB.Input({ source: new MB.BlobSource(blob), formats: MB.ALL_FORMATS });
+    const a = await input.getPrimaryAudioTrack();
+    if (!a || !(await a.canDecode())) throw new Error("pas de son lisible dans cette vidéo");
+    const dur = Math.min(600, await input.computeDuration());
+    const SR = 16000, ctx = new OfflineAudioContext(1, Math.ceil(dur * SR) + 1, SR);
+    for await (const w of new MB.AudioBufferSink(a).buffers(0, dur)) {
+      const src = ctx.createBufferSource(); src.buffer = w.buffer; src.connect(ctx.destination); src.start(Math.max(0, w.timestamp));
+    }
+    const data = await groqTranscribe(encodeWav((await ctx.startRendering()).getChannelData(0), SR), false);
+    return String(data.text || "").trim();
+  };
 
   // ----- Sons : ta bibliothèque de bruitages -----
   const libRefs = new Map();

@@ -10,6 +10,7 @@ export default {
       "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Expose-Headers": "X-Desc",
     };
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
 
@@ -55,6 +56,30 @@ export default {
         headers: { "Authorization": `Bearer ${env.APIFY_KEY}`, "Content-Type": "application/json" },
         body,
       });
+    } else if (p === "/tiktok-video") {
+      // Ouvre la page TikTok, trouve le fichier vidéo et le renvoie (pour transcrire ce qui est dit)
+      const page = new URL(url.searchParams.get("url") || "https://x.invalid");
+      if (page.protocol !== "https:" || !/(^|\.)tiktok\.com$/.test(page.hostname)) return new Response("Adresse refusée", { status: 400, headers: cors });
+      const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
+      const r1 = await fetch(page, { headers: { "User-Agent": UA, "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8", "Accept": "text/html" } });
+      const html = await r1.text();
+      const set = r1.headers.getSetCookie ? r1.headers.getSetCookie() : [r1.headers.get("set-cookie") || ""];
+      const cookie = set.map(c => c.split(";")[0]).filter(Boolean).join("; ");
+      let videoUrl = "", desc = "";
+      const m1 = html.match(/<script[^>]*id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/);
+      if (m1) {
+        try {
+          const item = JSON.parse(m1[1]).__DEFAULT_SCOPE__["webapp.video-detail"].itemInfo.itemStruct;
+          const v = item.video || {};
+          videoUrl = v.playAddr || v.downloadAddr || (v.bitrateInfo && v.bitrateInfo[0] && v.bitrateInfo[0].PlayAddr.UrlList[0]) || "";
+          desc = item.desc || "";
+        } catch (e) {}
+      }
+      if (!videoUrl) { const m2 = html.match(/"playAddr":"([^"]+)"/) || html.match(/"downloadAddr":"([^"]+)"/); if (m2) videoUrl = JSON.parse('"' + m2[1] + '"'); }
+      if (!videoUrl) return new Response("Vidéo introuvable sur la page TikTok", { status: 404, headers: cors });
+      const r2 = await fetch(videoUrl, { headers: { "User-Agent": UA, "Referer": "https://www.tiktok.com/", "Cookie": cookie, "Range": "bytes=0-" } });
+      if (!r2.ok) return new Response("TikTok a bloqué la vidéo (" + r2.status + ")", { status: 502, headers: cors });
+      return new Response(r2.body, { status: 200, headers: { ...cors, "Content-Type": "video/mp4", "X-Desc": encodeURIComponent(desc.slice(0, 500)) } });
     } else if (p === "/subtitle") {
       // Récupère un fichier de sous-titres TikTok (seulement depuis les serveurs TikTok)
       const target = new URL(url.searchParams.get("url") || "https://x.invalid");
