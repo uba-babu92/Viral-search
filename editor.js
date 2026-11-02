@@ -1,4 +1,5 @@
 // ===== TABLE DE MONTAGE (organisation façon CapCut, version simple) =====
+// Moteur : Mediabunny (vendor/, licence MPL-2.0) pour décoder et exporter en MP4 sur le téléphone.
 // Plans : appui long pour déplacer, poignées pour rallonger/raccourcir, diviser, vitesse x0,5 à x100, volume.
 // Sons : bibliothèque de bruitages perso (gardée sur le téléphone) + voix off (appui maintenu).
 // Légendes façon TikTok (transcription Groq Whisper), superpositions. Lecture sans écran noir ni latence.
@@ -6,7 +7,6 @@
   const PPS = 60;                                    // pixels par seconde
   const RULER_H = 20, VIDEO_Y = 24, VIDEO_H = 56, ROW_H = 30;
   const SPEEDS = [0.5, 0.75, 1, 1.5, 2, 3, 5, 10, 20, 50, 100];
-  const NATIVE_MAX = 4;                              // au-delà : lecture image par image (timelapse)
   const CAP_RATIO = 0.045;                           // taille du texte des légendes / hauteur de la vidéo
   const $ = id => document.getElementById(id);
 
@@ -45,11 +45,9 @@
   #edExport { padding: 8px 16px; border: 0; border-radius: 8px; background: #5cc8e0; color: #000; font-weight: 700; font-size: 15px; }
   #ed .eprev { flex: 1; min-height: 0; position: relative; display: flex; justify-content: center; align-items: center; }
   #ed .stage { position: relative; height: 100%; aspect-ratio: 9 / 16; max-width: 100%; background: #000; overflow: hidden; }
-  #ed .stage > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; }
-  #ed .stage > video.front { opacity: 1; }
-  .eov { position: absolute; aspect-ratio: 9 / 16; transform: translate(-50%, -50%); touch-action: none; z-index: 2; }
-  .eov video { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
-  .eov.sel { outline: 2px solid #fff; }
+  #edCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .eov { position: absolute; aspect-ratio: 9 / 16; box-sizing: border-box; transform: translate(-50%, -50%); touch-action: none; z-index: 2; }
+    .eov.sel { outline: 2px solid #fff; }
   .eov .ox, .eov .orz { display: none; position: absolute; width: 28px; height: 28px; border-radius: 14px; background: #222; color: #fff; align-items: center; justify-content: center; }
   .eov.sel .ox, .eov.sel .orz { display: flex; }
   .eov .ox { top: -14px; left: -14px; } .eov .orz { bottom: -14px; right: -14px; }
@@ -106,7 +104,7 @@
   <div id="ed" class="hidden">
     <div class="etop"><button id="edClose">${ic("x", 26)}</button><span class="grow"></span><span class="epill">1080p</span><button id="edExport">Exporter</button></div>
     <div class="eprev"><div class="stage" id="edStage">
-      <video id="edV0" playsinline preload="auto" class="front"></video><video id="edV1" playsinline preload="auto"></video>
+      <canvas id="edCanvas"></canvas>
       <div id="edOvs"></div><div id="edCap" class="hidden"></div>
     </div></div>
     <div class="ectrl"><span id="edTime"><b>00:00</b> / 00:00</span><button id="edPlay">${ic("play", 30)}</button>
@@ -125,7 +123,6 @@
     <div id="edSheet" class="hidden"><div class="sheet"><div id="edSheetBody"></div><button class="main alt" id="edSheetClose">Fermer</button></div></div>
   </div>`);
 
-  const players = [$("edV0"), $("edV1")];
   const tl = $("edTl"), inner = $("edInner"), items = $("edItems"), stage = $("edStage");
 
   // ---------- État ----------
@@ -141,7 +138,6 @@
   let waiting = false; // plan suivant en cours de chargement (secours)
   let refs = [];
   const past = [], future = [];
-  const audioEls = new Map();
 
   const sp = x => x.speed || 1;
   const len = x => (x.out - x.in) / sp(x);              // durée sur la ligne du temps
@@ -161,25 +157,6 @@
       acc += len(clips[i]);
     }
     return { i: -1, off: 0 };
-  }
-
-  function mediaDuration(ref, tag = "video") {
-    if (ref.dur) return Promise.resolve(ref.dur);
-    if (ref.image) return Promise.resolve(ref.dur = 3);
-    return new Promise(ok => {
-      const m = document.createElement(tag);
-      m.preload = "metadata"; m.muted = true; m.playsInline = true;
-      let fired = false;
-      const done = d => { if (fired) return; fired = true; m.onloadedmetadata = m.onerror = m.ontimeupdate = null; ok(ref.dur = d); };
-      m.onloadedmetadata = () => {
-        if (isFinite(m.duration) && m.duration > 0) return done(m.duration);
-        m.currentTime = 1e6; // enregistrements du navigateur : on force la lecture de la durée
-        m.ontimeupdate = () => done(isFinite(m.duration) && m.duration > 0 ? m.duration : 5);
-      };
-      m.onerror = () => done(5);
-      m.src = ref.url;
-      setTimeout(() => done(5), 8000);
-    });
   }
 
   // ---------- Bibliothèque de bruitages (gardée dans le téléphone) ----------
@@ -237,7 +214,7 @@
   }
   async function addAudio(ref, kind, start) {
     if (!refs.includes(ref)) refs.push(ref);
-    const d = await mediaDuration(ref, "audio");
+    const d = await mediaDuration(ref);
     save();
     audios.push({ ref, kind, start, in: 0, out: d, vol: 1 });
     sel = { type: "a", i: audios.length - 1 };
@@ -318,47 +295,26 @@
   }
 
   // ---------- Aperçu : superpositions et légendes ----------
-  const ovEls = new Map();   // clé -> {box, media}
-  function ovKey(o) { return refs.indexOf(o.ref) + "#" + overlays.filter(p => p.ref === o.ref).indexOf(o); }
+  // Cadres pour toucher / déplacer / agrandir les superpositions (l'image est dessinée sur le canvas)
+  const ovEls = new Map();   // superposition -> {box}
   function drawOverlays() {
-    const keep = new Set();
     overlays.forEach((o, i) => {
-      const key = ovKey(o); keep.add(key);
-      let e = ovEls.get(key);
+      let e = ovEls.get(o);
       if (!e) {
         const box = document.createElement("div");
         box.className = "eov";
-        const media = document.createElement(o.ref.image ? "img" : "video");
-        if (!o.ref.image) { media.playsInline = true; media.preload = "auto"; }
-        media.src = o.ref.url;
-        box.append(media);
-        box.insertAdjacentHTML("beforeend", `<div class="ox">${ic("x", 16)}</div><div class="orz">⤡</div>`);
+        box.innerHTML = `<div class="ox">${ic("x", 16)}</div><div class="orz">⤡</div>`;
         $("edOvs").append(box);
-        e = { box, media };
-        ovEls.set(key, e);
+        ovEls.set(o, (e = { box }));
       }
       e.i = i;
       e.box.classList.toggle("sel", !!(sel && sel.type === "o" && sel.i === i));
       e.box.style.left = o.x * 100 + "%";
       e.box.style.top = o.y * 100 + "%";
       e.box.style.width = o.scale * 100 + "%";
-      if (e.media.tagName === "VIDEO") e.media.muted = !o.vol;
+      e.box.style.display = t >= o.start && t < o.start + len(o) ? "" : "none";
     });
-    ovEls.forEach((e, key) => { if (!keep.has(key)) { e.box.remove(); ovEls.delete(key); } });
-    syncOverlays(false);
-  }
-  function syncOverlays(on) {
-    overlays.forEach(o => {
-      const e = ovEls.get(ovKey(o));
-      if (!e) return;
-      const inside = t >= o.start && t < o.start + len(o);
-      e.box.style.display = inside ? "" : "none";
-      if (e.media.tagName !== "VIDEO") return;
-      const want = o.in + (t - o.start);
-      if (!inside || !on) { if (!e.media.paused) e.media.pause(); if (inside && Math.abs(e.media.currentTime - want) > 0.05) e.media.currentTime = want; return; }
-      if (e.media.paused) { e.media.currentTime = want; e.media.play().catch(() => {}); }
-      else if (Math.abs(e.media.currentTime - want) > 0.3) e.media.currentTime = want;
-    });
+    ovEls.forEach((e, o) => { if (!overlays.includes(o)) { e.box.remove(); ovEls.delete(o); } });
   }
   function drawCaption() {
     const el = $("edCap");
@@ -400,7 +356,7 @@
     dragOn(ev => {
       if (resize) o.scale = Math.min(1.5, Math.max(0.15, os + ((ev.clientX - x0) + (ev.clientY - y0) * 9 / 16) / r.width));
       else { o.x = Math.min(1, Math.max(0, ox + (ev.clientX - x0) / r.width)); o.y = Math.min(1, Math.max(0, oy + (ev.clientY - y0) / r.height)); }
-      drawOverlays();
+      drawOverlays(); if (!playing) renderStill(t);
     });
   });
   function dragOn(move) {
@@ -410,158 +366,238 @@
     window.addEventListener("pointercancel", end);
   }
 
-  // ---------- Lecture sans écran noir ni latence (deux lecteurs) ----------
-  function resetPlayers() {
-    token++; step = null; waiting = false;
-    players.forEach(p => { p.pause(); p.removeAttribute("src"); p.dataset.url = ""; p.clip = -1; p.started = false; p.load(); });
-    front = 0; cur = -1;
-    players[0].classList.add("front"); players[1].classList.remove("front");
+  // ---------- Moteur vidéo (Mediabunny) : aperçu image par image, sans freeze ----------
+  // Comme CapCut Web / Clipchamp : on décode nous-mêmes les images (WebCodecs) et on les dessine.
+  // Aperçu en petite qualité (fluide), export en pleine qualité sur le téléphone.
+  const FPS = 30, PW = 432, PH = 768, EW = 1080, EH = 1920;
+  let MB = null;
+  const loadMB = () => (MB ? Promise.resolve(MB) : import("./vendor/mediabunny.min.mjs").then(m => (MB = m)));
+  let AC = null;
+  const audioCtx = () => (AC ||= new (window.AudioContext || window.webkitAudioContext)());
+  const view = $("edCanvas"), vg = view.getContext("2d");
+  view.width = PW; view.height = PH;
+
+  // Ouvre un fichier une seule fois : pistes vidéo/son, durée, lecteur d'aperçu
+  function media(ref) {
+    if (ref._p) return ref._p;
+    return (ref._p = (async () => {
+      if (ref.image) {
+        const img = new Image(); img.src = ref.url;
+        await img.decode().catch(() => {});
+        return (ref._m = { image: img, dur: 3600 });
+      }
+      await loadMB();
+      const blob = ref.file || await (await fetch(ref.url)).blob();
+      const input = new MB.Input({ source: new MB.BlobSource(blob), formats: MB.ALL_FORMATS });
+      const v = await input.getPrimaryVideoTrack().catch(() => null);
+      const a = await input.getPrimaryAudioTrack().catch(() => null);
+      const m = { input, dur: await input.computeDuration().catch(() => 5) };
+      m.v = v && await v.canDecode().catch(() => false) ? v : null;
+      m.a = a && await a.canDecode().catch(() => false) ? a : null;
+      if (m.v) m.prev = new MB.CanvasSink(m.v, { width: PW, height: PH, fit: "contain", poolSize: 16 });
+      ref._m = m;
+      decodeAudio(ref);   // le son se prépare en arrière-plan
+      return m;
+    })());
   }
-  function applyClip(p, c) {   // vitesse et son du plan sur ce lecteur
-    const native = sp(c) <= NATIVE_MAX;
-    p.defaultPlaybackRate = p.playbackRate = native ? sp(c) : 1;
-    p.muted = clipMute || !!voiceRec || !c.vol || sp(c) > 2;
-    p.volume = Math.min(1, c.vol);
+  async function mediaDuration(ref) {
+    if (ref.dur) return ref.dur;
+    if (ref.image) return (ref.dur = 3);
+    try { return (ref.dur = (await media(ref)).dur || 5); } catch (e) { return (ref.dur = 5); }
   }
-  // Prépare un lecteur sur un plan, à une position ; résout quand l'image est prête
-  function prepare(p, i, off) {
-    const c = clips[i];
-    p.clip = i; p.started = false;
-    applyClip(p, c);
-    return new Promise(ok => {
-      const at = c.in + off * sp(c);
-      const seekNow = () => {
-        if (Math.abs(p.currentTime - at) < 0.02 && p.readyState >= 2) return ok();
-        p.onseeked = () => { p.onseeked = null; ok(); };
-        p.currentTime = at;
-      };
-      if (p.dataset.url !== c.ref.url) {
-        p.dataset.url = c.ref.url;
-        p.src = c.ref.url;
-        p.onloadeddata = () => { p.onloadeddata = null; seekNow(); };
-        p.load();
-      } else if (p.readyState >= 1) seekNow();
-      else p.onloadeddata = () => { p.onloadeddata = null; seekNow(); };
-      setTimeout(ok, 2500);
-    });
+  // Tout le son d'un fichier dans un AudioBuffer (pour l'aperçu, les légendes et l'export)
+  function decodeAudio(ref) {
+    if (ref._ab !== undefined) return ref._ab;
+    return (ref._ab = (async () => {
+      const m = await media(ref);
+      if (!m.a) return null;
+      const parts = [];
+      for await (const w of new MB.AudioBufferSink(m.a).buffers()) parts.push(w);
+      if (!parts.length) return null;
+      const sr = parts[0].buffer.sampleRate, ch = parts[0].buffer.numberOfChannels, t0 = parts[0].timestamp;
+      const last = parts[parts.length - 1];
+      const n = Math.ceil((last.timestamp - t0 + last.buffer.duration) * sr) + 1;
+      const out = audioCtx().createBuffer(ch, n, sr);
+      for (const w of parts) {
+        const at = Math.max(0, Math.round((w.timestamp - t0) * sr));
+        for (let c = 0; c < ch; c++) out.getChannelData(c).set(w.buffer.getChannelData(Math.min(c, w.buffer.numberOfChannels - 1)).subarray(0, n - at), at);
+      }
+      ref._abReady = out;
+      return out;
+    })().catch(() => null));
   }
-  function swap() {
-    players[front].classList.remove("front");
-    players[front].pause();
-    front = 1 - front;
-    players[front].classList.add("front");
+
+  // Flux d'images d'un élément (plan ou superposition), décodées à l'avance
+  class Feed {
+    constructor(sink, item, k0) {
+      this.k0 = k0; this.k = -1; this.q = []; this.cur = null; this.done = false; this.busy = false;
+      const self = this;
+      this.it = sink.canvasesAtTimestamps((function* () {
+        for (let k = k0; ; k++) { const ts = item.in + (k / FPS) * sp(item); if (ts >= item.out || self.done) return; yield ts; }
+      })());
+      this.pump();
+    }
+    async pump() {
+      if (this.busy) return;
+      this.busy = true;
+      try { while (!this.done && this.q.length < 8) { const r = await this.it.next(); if (r.done) this.done = true; else this.q.push(r.value); } }
+      catch (e) { this.done = true; }
+      this.busy = false;
+    }
+    frame(kAbs) {   // image pour le numéro d'image demandé (garde la dernière si le décodage a du retard)
+      const want = kAbs - this.k0;
+      while (this.k < want && this.q.length) { const f = this.q.shift(); this.k++; if (f) this.cur = f.canvas; }
+      this.pump();
+      return this.cur;
+    }
+    close() { this.done = true; this.q = []; }
   }
-  const continuous = (a, b) => b && b.ref === a.ref && Math.abs(b.in - a.out) < 0.05 && sp(a) === sp(b);
-  function preloadNext() {
-    const n = cur + 1;
-    if (n >= clips.length || continuous(clips[cur], clips[n])) return;
-    prepare(players[1 - front], n, 0);
+  const feeds = new Map();   // élément -> Feed
+  function feedFor(item, kAbs) {
+    const m = item.ref && item.ref._m;
+    if (!m || !m.prev) return null;
+    let f = feeds.get(item);
+    if (!f || kAbs < f.k0 + f.k || kAbs - (f.k0 + Math.max(0, f.k)) > 20) {   // trop loin : on recommence ici
+      if (f) f.close();
+      f = new Feed(m.prev, item, Math.max(0, kAbs));
+      feeds.set(item, f);
+    }
+    return f;
   }
-  function enterClip(andPlay) {
-    const c = clips[cur], p = players[front];
-    applyClip(p, c);
-    if (!andPlay) return;
-    if (sp(c) > NATIVE_MAX) { p.pause(); step = { t0: t, clock: performance.now() }; }
-    else { step = null; p.play().catch(() => {}); }
+  function closeFeeds() { feeds.forEach(f => f.close()); feeds.clear(); }
+
+  // Dessin d'une image complète (plan + superpositions) sur un canvas
+  function drawOverlayImg(g, W, H, src, o) {
+    const bw = o.scale * W, bh = bw * 16 / 9, x = o.x * W - bw / 2, y = o.y * H - bh / 2;
+    if (src instanceof HTMLImageElement) {
+      const r = Math.min(bw / src.naturalWidth, bh / src.naturalHeight), w = src.naturalWidth * r, h = src.naturalHeight * r;
+      g.drawImage(src, x + (bw - w) / 2, y + (bh - h) / 2, w, h);
+    } else g.drawImage(src, x, y, bw, bh);
   }
-  async function show(time, andPlay) {
+  let lastMain = null;
+  function renderPlaying(time) {
     const { i, off } = locate(time);
     if (i < 0) return;
-    const my = ++token;
-    const f = players[front];
-    if (f.clip === i && f.dataset.url === clips[i].ref.url) await prepare(f, i, off);
-    else {
-      await prepare(players[1 - front], i, off);
-      if (my !== token) return;
-      swap();
-    }
-    if (my !== token) return;
-    cur = i;
-    t = time;
-    enterClip(andPlay);
-    preloadNext();
+    const c = clips[i], k = Math.floor(off * FPS + 1e-6);
+    const f = feedFor(c, k);
+    const img = f && f.frame(k);
+    if (img) lastMain = img;
+    if (!lastMain) return;   // rien de décodé encore : on garde l'image affichée
+    vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH);
+    vg.drawImage(lastMain, 0, 0, PW, PH);
+    // prépare le plan suivant à l'avance : zéro latence au passage
+    if (clips[i + 1] && len(c) - off < 1.5) feedFor(clips[i + 1], 0);
+    overlays.forEach(o => {
+      if (time < o.start || time >= o.start + len(o)) return;
+      if (o.ref.image) { if (o.ref._m) drawOverlayImg(vg, PW, PH, o.ref._m.image, o); return; }
+      const ko = Math.floor((time - o.start) * FPS + 1e-6), fo = feedFor(o, ko), im = fo && fo.frame(ko);
+      if (im) drawOverlayImg(vg, PW, PH, im, o);
+    });
+    // libère les flux qui ne servent plus
+    feeds.forEach((f, item) => {
+      const keep = item === c || item === clips[i + 1] || (overlays.includes(item) && time >= item.start - 1.5 && time < item.start + len(item));
+      if (!keep) { f.close(); feeds.delete(item); }
+    });
   }
+  let stillToken = 0;
+  async function renderStill(time) {   // image fixe (pause, défilement)
+    const my = ++stillToken;
+    const { i, off } = locate(time);
+    if (i < 0) { vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH); return; }
+    const c = clips[i];
+    const m = await media(c.ref).catch(() => null);
+    const w = m && m.prev ? await m.prev.getCanvas(c.in + off * sp(c)).catch(() => null) : null;
+    const ovs = [];
+    for (const o of overlays) {
+      if (time < o.start || time >= o.start + len(o)) continue;
+      const mo = await media(o.ref).catch(() => null);
+      if (!mo) continue;
+      if (mo.image) ovs.push([mo.image, o]);
+      else if (mo.prev) { const wo = await mo.prev.getCanvas(o.in + (time - o.start) * sp(o)).catch(() => null); if (wo) ovs.push([wo.canvas, o]); }
+    }
+    if (my !== stillToken) return;
+    vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH);
+    if (w) { vg.drawImage(w.canvas, 0, 0, PW, PH); lastMain = null; }
+    ovs.forEach(([src, o]) => drawOverlayImg(vg, PW, PH, src, o));
+  }
+
+  // ---------- Lecture : horloge du son = image et son parfaitement calés ----------
+  let nodes = [], playT0 = 0, ac0 = 0;
+  function resetPlayers() { closeFeeds(); lastMain = null; }
+  function scheduleAudio(from, when) {
+    const ac = audioCtx();
+    const add = (buf, startTl, bufIn, bufOut, rate, vol) => {
+      if (!buf || !vol) return;
+      const tlLen = (bufOut - bufIn) / rate;
+      if (startTl + tlLen <= from) return;
+      const skip = Math.max(0, from - startTl);
+      const src = ac.createBufferSource(), g = ac.createGain();
+      src.buffer = buf; src.playbackRate.value = rate; g.gain.value = vol;
+      src.connect(g).connect(ac.destination);
+      src.start(when + Math.max(0, startTl - from), bufIn + skip * rate, Math.max(0.01, bufOut - bufIn - skip * rate));
+      nodes.push(src);
+    };
+    let at = 0;
+    clips.forEach(c => {
+      if (!clipMute && !voiceRec && sp(c) <= 2) add(c.ref._abReady, at, c.in, c.out, sp(c), c.vol);
+      at += len(c);
+    });
+    overlays.forEach(o => { if (!o.ref.image && !voiceRec) add(o.ref._abReady, o.start, o.in, o.out, sp(o), o.vol); });
+    audios.forEach(a => add(a.ref._abReady, a.start, a.in, a.out, 1, a.vol));
+  }
+  function stopAudio() { nodes.forEach(n => { try { n.stop(); } catch (e) {} }); nodes = []; }
   function setScroll(time) {
     programmatic = true;
     tl.scrollLeft = time * PPS;
     requestAnimationFrame(() => (programmatic = false));
   }
-  function refreshAt() { syncAudio(false); syncOverlays(false); drawCaption(); showTime(); }
+  function refreshAt() { drawOverlays(); drawCaption(); showTime(); }
   function seek(time) {
     t = Math.min(Math.max(0, time), total());
     setScroll(t);
-    show(t, false);
+    renderStill(t);
     refreshAt();
   }
-  let unlocked = false;
-  function unlock() { // iPhone : on « débloque » les lecteurs pendant le geste de l'utilisateur
-    if (unlocked) return;
-    unlocked = true;
-    players.forEach(p => { if (p !== players[front] && p.src) p.play().then(() => p.pause()).catch(() => {}); });
-  }
-  function play() {
-    if (!clips.length) return;
+  async function play() {
+    if (!clips.length || playing) return;
+    const need = [...clips, ...overlays, ...audios].filter(x => x.ref && !x.ref.image && x.ref._abReady === undefined);
+    if (need.length) {
+      audioCtx().resume();
+      toast("Préparation du son…", 1500);
+      await Promise.all(need.map(x => decodeAudio(x.ref)));
+      need.forEach(x => { if (x.ref._abReady === undefined) x.ref._abReady = null; });
+    }
     if (t >= total() - 0.05) t = 0;
+    const ac = audioCtx();
+    ac.resume();
     playing = true;
     $("edPlay").innerHTML = ic("pause", 30);
-    unlock();
-    show(t, true).then(() => requestAnimationFrame(loop));
+    closeFeeds();
+    const when = ac.currentTime + 0.12;   // petite avance : les premières images se décodent
+    playT0 = t; ac0 = when;
+    scheduleAudio(t, when);
+    renderPlaying(t);
+    requestAnimationFrame(loop);
   }
   function pause() {
-    playing = false; step = null;
+    if (!playing) return;
+    playing = false;
     $("edPlay").innerHTML = ic("play", 30);
-    players.forEach(p => p.pause());
-    syncAudio(false); syncOverlays(false);
+    stopAudio();
+    closeFeeds();
+    renderStill(t);
   }
   $("edPlay").onclick = () => (playing ? pause() : play());
-  players.forEach(p => p.addEventListener("click", () => (playing ? pause() : play())));
+  view.addEventListener("click", () => (playing ? pause() : play()));
 
   function loop() {
     if (!playing) return;
-    const c = clips[cur], v = players[front];
-    if (c && v.clip === cur) {
-      const s0 = startOf(cur), end = s0 + len(c);
-      // Temps courant
-      if (step) {
-        t = Math.min(end, step.t0 + (performance.now() - step.clock) / 1000);
-        if (!v.seeking) { const want = c.in + (t - s0) * sp(c); if (v.fastSeek) v.fastSeek(want); else v.currentTime = want; }
-      } else if (!v.seeking) t = s0 + Math.max(0, v.currentTime - c.in) / sp(c);
-      const left = end - t;
-      const n = cur + 1, nx = clips[n], back = players[1 - front];
-      // Démarre le plan suivant un tout petit peu avant : zéro latence
-      if (nx && !step && sp(nx) <= NATIVE_MAX && !continuous(c, nx) && back.clip === n && !back.started && left < 0.08 && back.readyState >= 2) {
-        back.started = true; applyClip(back, nx); back.play().catch(() => {});
-      }
-      if (left <= 0.015 || (!step && v.ended)) {
-        if (!nx) { pause(); t = total(); setScroll(t); refreshAt(); return; } // garde la dernière image
-        if (continuous(c, nx)) { cur = n; v.clip = n; }
-        else if (back.clip === n && back.readyState >= 2) { swap(); cur = n; t = startOf(n); enterClip(true); preloadNext(); }
-        else if (!waiting) { waiting = true; v.pause(); step = null; show(startOf(n) + 0.001, true).finally(() => (waiting = false)); }
-        if (waiting) { requestAnimationFrame(loop); return; }
-      }
-      setScroll(t);
-      syncAudio(true); syncOverlays(true); drawCaption(); showTime();
-    }
+    t = Math.min(total(), playT0 + Math.max(0, audioCtx().currentTime - ac0));
+    if (t >= total() - 0.001) { playing = false; $("edPlay").innerHTML = ic("play", 30); stopAudio(); closeFeeds(); t = total(); setScroll(t); refreshAt(); return; }
+    renderPlaying(t);
+    setScroll(t);
+    refreshAt();
     requestAnimationFrame(loop);
-  }
-
-  function getAudio(ref) {
-    let el = audioEls.get(ref);
-    if (!el) { el = new Audio(ref.url); el.preload = "auto"; audioEls.set(ref, el); }
-    return el;
-  }
-  function syncAudio(on) {
-    const active = new Set();
-    audios.forEach(a => {
-      if (!(on && t >= a.start && t < a.start + len(a))) return;
-      active.add(a.ref);
-      const el = getAudio(a.ref), want = a.in + (t - a.start);
-      el.muted = !a.vol;
-      el.volume = Math.min(1, a.vol);
-      if (el.paused) { el.currentTime = want; el.play().catch(() => {}); }
-      else if (Math.abs(el.currentTime - want) > 0.35) el.currentTime = want;
-    });
-    audioEls.forEach((el, ref) => { if (!active.has(ref) && !el.paused) el.pause(); });
   }
 
   // Faire défiler = se déplacer (bloqué à la fin du montage)
@@ -574,7 +610,7 @@
     t = Math.min(tl.scrollLeft / PPS, total());
     refreshAt();
     clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(() => show(t, false), 50);
+    scrollTimer = setTimeout(() => renderStill(t), 30);
   });
 
   // ---------- Gestes : toucher, appui long pour déplacer, poignées ----------
@@ -857,17 +893,10 @@
     return out;
   }
   // Mélange le son du montage (plans + voix off) en un petit fichier WAV 16 kHz mono
-  const decoded = new Map();
   async function mixAudio() {
     const SR = 16000, dur = Math.max(0.5, total());
     const ctx = new OfflineAudioContext(1, Math.ceil(dur * SR), SR);
-    const decode = async ref => {
-      if (!decoded.has(ref)) {
-        const buf = await (ref.file ? ref.file.arrayBuffer() : fetch(ref.url).then(r => r.arrayBuffer()));
-        decoded.set(ref, await ctx.decodeAudioData(buf).catch(() => null));
-      }
-      return decoded.get(ref);
-    };
+    const decode = ref => decodeAudio(ref);
     let at = 0;
     for (const c of clips) {
       const l = len(c);
@@ -965,60 +994,123 @@
   function closeSheet() { $("edSheet").classList.add("hidden"); }
   $("edSheetClose").onclick = () => { closeSheet(); draw(); };
 
-  // ---------- Export (Shotstack) ----------
-  function videoClips(c, start) {   // un plan -> un ou plusieurs clips Shotstack
-    const vol = clipMute || sp(c) > 2 ? 0 : +c.vol.toFixed(2);
-    const maxIn = c.ref.dur || c.out;
-    if (sp(c) < 10) {
-      const l = Math.floor(Math.min(len(c), (maxIn - c.in) / sp(c)) * 1000) / 1000;   // jamais plus long que la vidéo
-      const asset = { type: "video", src: c.ref.src, trim: +c.in.toFixed(3), volume: vol };
-      if (sp(c) !== 1) asset.speed = sp(c);
-      return [{ asset, start: +start.toFixed(3), length: l }];
-    }
-    // x10 à x100 : timelapse, une image toutes les « vitesse / 15 » secondes
-    const out = [], L = 1 / 15, n = Math.max(1, Math.floor(len(c) / L));
-    for (let k = 0; k < n; k++) {
-      const trim = Math.min(maxIn - 0.05, c.in + k * L * sp(c));
-      out.push({ asset: { type: "video", src: c.ref.src, trim: +trim.toFixed(3), volume: 0 }, start: +(start + k * L).toFixed(3), length: +L.toFixed(4) });
-    }
-    return out;
+  // ---------- Export sur le téléphone (Mediabunny), pleine qualité, sans serveur ni logo ----------
+  // Texte des légendes dessiné comme dans l'aperçu
+  function drawCapText(g, W, H, text) {
+    const size = H * CAP_RATIO * capStyle.size, maxW = W * 0.86;
+    g.font = `800 ${size}px system-ui, -apple-system, "Helvetica Neue", sans-serif`;
+    g.textAlign = "center"; g.textBaseline = "middle"; g.lineJoin = "round";
+    const lines = [];
+    let line = "";
+    text.split(/\s+/).forEach(w => { const test = line ? line + " " + w : w; if (g.measureText(test).width > maxW && line) { lines.push(line); line = w; } else line = test; });
+    if (line) lines.push(line);
+    const lh = size * 1.1, y0 = capStyle.y * H - (lines.length - 1) * lh / 2;
+    lines.forEach((l, i) => {
+      g.lineWidth = size * 0.16; g.strokeStyle = "#000"; g.strokeText(l, capStyle.x * W, y0 + i * lh);
+      g.fillStyle = "#fff"; g.fillText(l, capStyle.x * W, y0 + i * lh);
+    });
+  }
+  // Mélange final du son (48 kHz stéréo)
+  async function renderMix() {
+    const SR = 48000, dur = total();
+    const ctx = new OfflineAudioContext(2, Math.ceil(dur * SR), SR);
+    const add = async (ref, startTl, bufIn, bufOut, rate, vol) => {
+      if (!vol) return;
+      const buf = await decodeAudio(ref);
+      if (!buf) return;
+      const s = ctx.createBufferSource(), g = ctx.createGain();
+      s.buffer = buf; s.playbackRate.value = rate; g.gain.value = vol;
+      s.connect(g).connect(ctx.destination);
+      s.start(startTl, bufIn, Math.max(0.01, bufOut - bufIn));
+    };
+    let at = 0;
+    for (const c of clips) { if (!clipMute && sp(c) <= 2) await add(c.ref, at, c.in, c.out, sp(c), c.vol); at += len(c); }
+    for (const o of overlays) if (!o.ref.image) await add(o.ref, o.start, o.in, o.out, sp(o), o.vol);
+    for (const a of audios) await add(a.ref, a.start, a.in, a.out, 1, a.vol);
+    return ctx.startRendering();
+  }
+  // Images d'un élément en pleine qualité, une par image de la vidéo finale
+  function fullFrames(item, n0, n1, startTl) {
+    const m = item.ref._m;
+    const sink = new MB.CanvasSink(m.v, { width: EW, height: EH, fit: "contain", poolSize: 3 });
+    return sink.canvasesAtTimestamps((function* () {
+      for (let n = n0; n < n1; n++) yield Math.min(item.out - 0.001, item.in + (n / FPS - startTl) * sp(item));
+    })());
   }
 
+  let exporting = false;
   $("edExport").onclick = async () => {
-    if (!clips.length) return;
+    if (!clips.length || exporting) return;
     pause();
+    exporting = true;
     const say = txt => sheet(`<div style="font-size:15px;color:#ddd">⏳ ${txt}</div>`, false);
     try {
-      const used = [...new Set([...clips, ...audios, ...overlays].map(x => x.ref))];
-      for (let n = 0; n < used.length; n++) await uploadRush(used[n], `fichier ${n + 1}/${used.length}`, say);
-      const tracks = [];
-      if (caps.length) tracks.push({ clips: caps.map(c => ({
-        asset: { type: "text", text: c.text, width: 960, height: 400,
-          font: { family: "Montserrat ExtraBold", size: Math.round(1920 * CAP_RATIO * capStyle.size), color: "#ffffff", lineHeight: 1.1 },
-          stroke: { color: "#000000", width: 4 },
-          alignment: { horizontal: "center", vertical: "center" } },
-        start: +c.start.toFixed(3), length: +len(c).toFixed(3), position: "center",
-        offset: { x: +(capStyle.x - 0.5).toFixed(3), y: +(0.5 - capStyle.y).toFixed(3) } })) });
-      const ovL = lanes(overlays);
-      for (let l = 0; l < nl(ovL); l++) tracks.push({ clips: overlays.filter((o, i) => ovL[i] === l).map(o => ({
-        asset: o.ref.image ? { type: "image", src: o.ref.src } : { type: "video", src: o.ref.src, trim: +o.in.toFixed(3), volume: +o.vol.toFixed(2) },
-        start: +o.start.toFixed(3), length: +len(o).toFixed(3), fit: "contain", scale: +o.scale.toFixed(3), position: "center",
-        offset: { x: +(o.x - 0.5).toFixed(3), y: +(0.5 - o.y).toFixed(3) } })) });
-      const auL = lanes(audios);
-      for (let l = 0; l < nl(auL); l++) tracks.push({ clips: audios.filter((a, i) => auL[i] === l).map(a => ({
-        asset: { type: "audio", src: a.ref.src, trim: +a.in.toFixed(3), volume: +a.vol.toFixed(2) },
-        start: +a.start.toFixed(3), length: +len(a).toFixed(3) })) });
-      let start = 0;
-      const main = [];
-      clips.forEach(c => { main.push(...videoClips(c, start)); start += len(c); });
-      tracks.push({ clips: main });
-      say("Montage envoyé…");
-      const url = await renderTimeline({ background: "#000000", tracks }, say);
-      sheet(`<div>✅ Vidéo prête !</div>
+      say("Préparation…");
+      await loadMB();
+      for (const x of [...clips, ...overlays, ...audios]) await media(x.ref);
+      if (!(await MB.canEncodeAudio("aac"))) (await import("./vendor/mediabunny-aac-encoder.min.mjs")).registerAacEncoder();
+      const out = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: "in-memory" }), target: new MB.BufferTarget() });
+      const cv = document.createElement("canvas"); cv.width = EW; cv.height = EH;
+      const g = cv.getContext("2d");
+      const vs = new MB.CanvasSource(cv, { codec: "avc", bitrate: MB.QUALITY_HIGH, keyFrameInterval: 2 });
+      out.addVideoTrack(vs, { frameRate: FPS });
+      say("Mixage du son…");
+      const mix = await renderMix();
+      const as = new MB.AudioBufferSource({ codec: "aac", bitrate: MB.QUALITY_HIGH });
+      out.addAudioTrack(as);
+      await out.start();
+      await as.add(mix);
+      as.close();
+
+      const N = Math.max(1, Math.round(total() * FPS));
+      const clipRange = clips.map((c, i) => { const s0 = startOf(i); return [Math.round(s0 * FPS), Math.round((s0 + len(c)) * FPS), s0]; });
+      const ovRange = overlays.map(o => [Math.max(0, Math.round(o.start * FPS)), Math.min(N, Math.round((o.start + len(o)) * FPS))]);
+      let ci = -1, it = null, frame = null;
+      const ovIt = overlays.map(() => null), ovFrame = overlays.map(() => null);
+      for (let n = 0; n < N; n++) {
+        const tt = n / FPS;
+        // plan principal
+        while (ci < clips.length - 1 && n >= clipRange[ci + 1][0]) {
+          ci++;
+          it = clips[ci].ref._m.v ? fullFrames(clips[ci], clipRange[ci][0], clipRange[ci][1], clipRange[ci][2]) : null;
+        }
+        if (it) { const r = await it.next(); if (!r.done && r.value) frame = r.value.canvas; }
+        g.fillStyle = "#000"; g.fillRect(0, 0, EW, EH);
+        if (frame) g.drawImage(frame, 0, 0, EW, EH);
+        // superpositions
+        for (let j = 0; j < overlays.length; j++) {
+          const o = overlays[j], [a, b] = ovRange[j];
+          if (n < a || n >= b) continue;
+          if (o.ref.image) { drawOverlayImg(g, EW, EH, o.ref._m.image, o); continue; }
+          if (!ovIt[j] && o.ref._m.v) ovIt[j] = fullFrames(o, a, b, o.start);
+          if (ovIt[j]) { const r = await ovIt[j].next(); if (!r.done && r.value) ovFrame[j] = r.value.canvas; }
+          if (ovFrame[j]) drawOverlayImg(g, EW, EH, ovFrame[j], o);
+        }
+        // légendes
+        const cap = caps.find(c => tt >= c.start && tt < c.start + len(c));
+        if (cap) drawCapText(g, EW, EH, cap.text);
+        await vs.add(tt, 1 / FPS);
+        if (n % 10 === 0) say(`Export : ${Math.round(n / N * 100)} %`);
+      }
+      vs.close();
+      say("Finalisation…");
+      await out.finalize();
+      const file = new File([out.target.buffer], "montage.mp4", { type: "video/mp4" });
+      const url = URL.createObjectURL(file);
+      sheet(`<div>✅ Vidéo prête ! (${(file.size / 1e6).toFixed(1)} Mo)</div>
         <video src="${url}" controls playsinline style="width:100%;max-height:50vh;border-radius:8px;background:#000"></video>
-        <a style="display:block;text-align:center;text-decoration:none;padding:10px;border-radius:8px;background:#3b82f6;color:#fff" href="${url}" target="_blank" rel="noopener">Télécharger</a>`);
+        <button class="main" id="edSave">💾 Enregistrer dans mes photos</button>
+        <a style="display:block;text-align:center;color:#888;font-size:13px" href="${url}" download="montage.mp4">Télécharger le fichier</a>`);
+      $("edSave").onclick = async () => {
+        try {
+          if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file] });
+          else { const a = document.createElement("a"); a.href = url; a.download = "montage.mp4"; a.click(); }
+        } catch (e) { /* annulé */ }
+      };
     } catch (err) {
-      sheet(`<div style="color:#f87171">❌ ${esc(err.message)}</div>`);
+      sheet(`<div style="color:#f87171">❌ Export : ${esc(err.message || String(err))}</div>`);
+    } finally {
+      exporting = false;
     }
   };
 
