@@ -273,7 +273,13 @@
     PROPS[k].forEach(p => { const a = A.v[p] ?? b[p], c = B.v[p] ?? b[p]; o[p] = a + (c - a) * u; });
     return o;
   }
-  const kfNear = (it, local) => (it.kf || []).findIndex(k => Math.abs(k.t - local) < 0.6 / FPS);
+  // « Sur la clé » = à moins de 10 pixels d'elle sur la ligne du temps (comme CapCut) : on modifie cette clé
+  const KF_SNAP = 10 / PPS;
+  const kfNear = (it, local) => {
+    let best = -1, d = KF_SNAP;
+    (it.kf || []).forEach((k, j) => { const e = Math.abs(k.t - local); if (e <= d) { d = e; best = j; } });
+    return best;
+  };
   // Modifie un élément : s'il a des clés, la modification crée/met à jour la clé à cet instant (comme CapCut)
   function setProps(k, i, changes) {
     const it = itemOf(k, i), local = t - startOfItem(k, i);
@@ -859,7 +865,13 @@
     t = Math.min(tl.scrollLeft / PPS, total());
     refreshAt();
     clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(() => renderStill(t), 30);
+    scrollTimer = setTimeout(() => {
+      if (sel && PROPS[sel.type]) {   // aimant : la barre se colle à une clé toute proche
+        const it = itemOf(sel.type, sel.i), s0 = startOfItem(sel.type, sel.i), j = kfNear(it, t - s0);
+        if (j >= 0 && Math.abs(s0 + it.kf[j].t - t) > 0.001) { t = s0 + it.kf[j].t; setScroll(t); refreshAt(); }
+      }
+      renderStill(t);
+    }, 80);
   });
 
   // ---------- Gestes : toucher, appui long pour déplacer, poignées ----------
