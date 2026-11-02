@@ -187,18 +187,29 @@
   $("edRedo").onclick = () => { if (future.length) { past.push(snap()); restore(future.pop()); } };
 
   // ---------- Ouvrir / fermer ----------
+  // Le montage est gardé quand on ferme l'éditeur : on le retrouve en revenant avec les mêmes rushs
   window.openEditor = async (list, opts = {}) => {
     $("ed").classList.remove("hidden");
     document.body.style.overflow = "hidden";
-    refs = []; clips = []; audios = []; overlays = []; caps = []; sel = null;
-    capStyle = { x: 0.5, y: 0.7, size: 1, style: "box" }; clipMute = false;
-    past.length = future.length = 0; updUndo();
-    resetPlayers();
     ["400 20px Anton", '800 20px "JetBrains Mono"', "900 20px Montserrat"].forEach(f => document.fonts.load(f).catch(() => {}));
-    await addVideos(list, false);
-    seek(0);
+    const known = clips.length && clips.some(c => list.includes(c.ref));
+    if (known) {
+      // même projet : on ajoute seulement les nouveaux rushs, et on retire ceux supprimés de la liste
+      const gone = refs.filter(r => !list.includes(r) && clips.some(c => c.ref === r));
+      if (gone.length) { save(); clips = clips.filter(c => !gone.includes(c.ref)); }
+      const added = list.filter(r => !refs.includes(r));
+      if (added.length) await addVideos(added);
+      resetPlayers(); draw(); seek(Math.min(t, total()));
+    } else {
+      refs = []; clips = []; audios = []; overlays = []; caps = []; sel = null;
+      capStyle = { x: 0.5, y: 0.7, size: 1, style: "box" }; clipMute = false;
+      past.length = future.length = 0; updUndo();
+      resetPlayers();
+      await addVideos(list, false);
+      seek(0);
+    }
     if (opts.message) toast(opts.message, 4000);
-    if (opts.captions) setTimeout(() => captionSheet(true), 600);
+    if (opts.captions && !caps.length) setTimeout(() => captionSheet(true), 600);   // légendes déjà faites : on ne redemande pas
   };
   $("edClose").onclick = () => { pause(); $("ed").classList.add("hidden"); document.body.style.overflow = ""; };
 
