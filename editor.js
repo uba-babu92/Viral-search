@@ -43,7 +43,7 @@
   #ed .etop .grow { flex: 1; }
   #edClose { border: 0; background: none; color: #fff; padding: 4px; display: flex; }
   #ed .epill { padding: 7px 12px; border-radius: 8px; background: #1f1f1f; font-size: 14px; font-weight: 600; }
-  #edExport { padding: 8px 16px; border: 0; border-radius: 8px; background: #5cc8e0; color: #000; font-weight: 700; font-size: 15px; }
+  #edExport { padding: 9px 18px; border: 0; border-radius: 999px; background: #FF5A4E; color: #fff; font-weight: 700; font-size: 15px; }
   #ed .eprev { flex: 1; min-height: 0; position: relative; display: flex; justify-content: center; align-items: center; }
   #ed .stage { position: relative; height: 100%; aspect-ratio: 9 / 16; max-width: 100%; background: #000; overflow: hidden; }
   #edCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
@@ -54,7 +54,7 @@
   .eov .ox { top: -14px; left: -14px; } .eov .orz { bottom: -14px; right: -14px; }
   #edCap { position: absolute; transform: translate(-50%, -50%); width: 86%; text-align: center; color: transparent; font-weight: 800; line-height: 1.3; touch-action: none; z-index: 3; border-radius: 6px; }
   #edCap.sel { outline: 1px dashed #fffa; }
-  #edPip { position: absolute; top: 10px; right: 10px; width: 34%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 10px; border: 2px solid #ef4444; transform: scaleX(-1); z-index: 5; background: #000; }
+  #edPip { position: absolute; top: 10px; right: 10px; width: 34%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 14px; border: 2px solid #FF5A4E; transform: scaleX(-1); z-index: 5; background: #000; }
   #ed .ectrl { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 16px; font-size: 13px; }
   #edTime b { color: #fff; font-weight: 500; } #edTime { color: #777; }
   #edPlay { border: 0; background: none; color: #fff; display: flex; padding: 6px; }
@@ -86,10 +86,12 @@
   #ed .etools::-webkit-scrollbar { display: none; }
   #ed .etools button { flex: 0 0 auto; border: 0; background: none; color: #eee; font-size: 12px; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 70px; padding: 2px 0; touch-action: manipulation; }
   #ed .etools button.back { flex: 0 0 44px; min-width: 44px; justify-content: center; background: #1f1f1f; border-radius: 8px; }
-  #ed .etools button.rec { color: #ef4444; }
+  #ed .etools button.rec { color: #FF5A4E; }
   #edSheet { position: absolute; inset: 0; background: #0009; display: flex; align-items: flex-end; z-index: 10; }
-  #edSheet .sheet { width: 100%; max-height: 75vh; overflow-y: auto; background: #1c1c1c; border-radius: 16px 16px 0 0; padding: 16px 16px max(16px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; }
-  #edSheet input[type=range] { width: 100%; accent-color: #5cc8e0; }
+  #edSheet .sheet { width: 100%; max-height: 75vh; overflow-y: auto; background: #1c1c1c; border-radius: 28px 28px 0 0; padding: 16px 16px max(16px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; }
+  #edSheet input[type=range] { width: 100%; accent-color: #FF5A4E; }
+  #ed button.main.alt { background: #2c2c2c; }
+  #ed input[type=text] { background: #2a2a2a; color: #fff; }
   #edSheet input[type=text] { margin: 0; }
   .elib { display: flex; flex-direction: column; gap: 6px; }
   .elib div { display: flex; gap: 6px; align-items: center; }
