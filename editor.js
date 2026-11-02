@@ -913,15 +913,19 @@
       say("Préparation du son…");
       const wav = await mixAudio();
       say("Transcription…");
-      const fd = new FormData();
-      fd.append("file", new File([wav], "son.wav", { type: "audio/wav" }));
-      fd.append("model", "whisper-large-v3-turbo");
-      fd.append("response_format", "verbose_json");
-      fd.append("language", "fr");
-      fd.append("timestamp_granularities[]", "word");
-      fd.append("timestamp_granularities[]", "segment");
-      const res = await fetch(RELAY + "/transcribe", { method: "POST", body: fd });
-      const txt = await res.text();
+      let res, txt;
+      for (const model of ["whisper-large-v3-turbo", "whisper-large-v3"]) {   // si Groq retire un modèle, on essaie l'autre
+        const fd = new FormData();
+        fd.append("file", new File([wav], "son.wav", { type: "audio/wav" }));
+        fd.append("model", model);
+        fd.append("response_format", "verbose_json");
+        fd.append("language", "fr");
+        fd.append("timestamp_granularities[]", "word");
+        fd.append("timestamp_granularities[]", "segment");
+        res = await fetch(RELAY + "/transcribe", { method: "POST", body: fd });
+        txt = await res.text();
+        if (res.ok || !((res.status === 404 || res.status === 400) && /model/i.test(txt))) break;
+      }
       if (!res.ok) { if (typeof checkCredit === "function") checkCredit("IA", res.status, txt); let why = txt; try { why = JSON.parse(txt).error.message || txt; } catch (e) {}
         throw new Error(`Groq a refusé (${res.status}) : ${String(why).slice(0, 160)}` + (res.status === 401 ? " → la clé dans AI_KEY n'est pas acceptée" : "")); }
       const data = JSON.parse(txt);

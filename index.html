@@ -446,7 +446,26 @@ document.getElementById("montageGo").addEventListener("click", () => {
 });
 
 // ----- Script : coach d'écriture IA (Groq, via le relais) -----
-const AI_MODEL = "llama-3.3-70b-versatile"; // Groq (gratuit)
+// Modèles Groq (gratuits), du meilleur au plus léger. Groq en retire parfois :
+// l'appli essaie dans l'ordre et retient celui qui marche.
+const AI_MODELS = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "meta-llama/llama-4-maverick-17b-128e-instruct", "qwen/qwen3-32b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"];
+async function askModel(messages) {
+  const saved = localStorage.getItem("aiModel");
+  const list = saved ? [saved, ...AI_MODELS.filter(m => m !== saved)] : AI_MODELS;
+  let last = "";
+  for (const model of list) {
+    const res = await fetch(RELAY + "/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model, messages }) });
+    const t = await res.text();
+    if (res.ok) {
+      localStorage.setItem("aiModel", model);
+      return JSON.parse(t).choices[0].message.content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    }
+    last = res.status + " " + t.slice(0, 150);
+    if (!(res.status === 404 || res.status === 400) || !/model/i.test(t)) { checkCredit("IA", res.status, t); break; }   // autre erreur : on arrête
+    if (saved === model) localStorage.removeItem("aiModel");
+  }
+  throw new Error(last);
+}
 const RULES = `Règles d'un bon script de vidéo courte (TikTok, Reels) :
 - Accroche dans les 2 premières secondes : une phrase choc, une question ou une promesse.
 - Rythme rapide : phrases courtes, une idée par plan, une relance toutes les 3 à 5 secondes.
@@ -515,13 +534,7 @@ async function askAI(content, shown) {
   document.querySelectorAll("#creerGo, #adapterGo, #replyGo").forEach(b => b.disabled = true);
   st.textContent = "Le coach écrit…";
   try {
-    const res = await fetch(RELAY + "/ai", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: AI_MODEL, messages: chat })
-    });
-    const t = await res.text();
-    if (!res.ok) { checkCredit("IA", res.status, t); throw new Error(res.status + " " + t.slice(0, 150)); }
-    const answer = JSON.parse(t).choices[0].message.content;
+    const answer = await askModel(chat);
     chat.push({ role: "assistant", content: answer });
     addMsg(answer, false);
     st.textContent = "";
