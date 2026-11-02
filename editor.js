@@ -216,7 +216,7 @@
       seek(0);
     }
     if (opts.message) toast(opts.message, 4000);
-    if (opts.ai) setTimeout(aiMontage, 300);   // Montage IA : écoute, coupe des blancs, légendes
+    if (opts.ai) setTimeout(() => aiMontage(opts.prompt || ""), 300);   // Montage IA : écoute, coupe des blancs, légendes
   };
   $("edClose").onclick = () => { pause(); $("ed").classList.add("hidden"); document.body.style.overflow = ""; };
 
@@ -1180,18 +1180,18 @@
         <div><div style="color:${s.st === "wait" ? "#777" : "#fff"}">${s.label}</div>${s.info ? `<div style="font-size:12px;color:#999;margin-top:2px">${esc(s.info)}</div>` : ""}</div></div>`).join("")}
       ${foot}`, false);
   }
-  async function aiMontage() {
+  async function aiMontage(prompt = "") {
     pause();
     const steps = [
       { label: "Préparation de tes rushs", st: "doing" },
       { label: "Écoute de ce que tu dis", st: "wait" },
-      { label: "Coupe des blancs et des hésitations", st: "wait" },
-      { label: "Ajout des légendes", st: "wait" },
+      { label: "L'IA décide du montage", st: "wait" },
+      { label: "Application du montage et des légendes", st: "wait" },
     ];
-    const show = () => aiSheet(steps);
+    const show = () => aiSheet(steps, prompt ? `<div class="small" style="color:#999">Prompt : « ${esc(prompt.slice(0, 140))} »</div>` : "");
     show();
     const before = total();
-    let cutsDone = 0, words = null;
+    let words;
     try {
       for (const c of clips) { await media(c.ref); await decodeAudio(c.ref); }
       steps[0].st = "done"; steps[0].info = `${clips.length} rush(s), ${before.toFixed(1)} s`;
@@ -1205,44 +1205,89 @@
       steps[i].st = "fail"; steps[i].info = e.message;
       for (let j = i + 1; j < steps.length; j++) { steps[j].st = "fail"; steps[j].info = "pas possible sans l'étape d'avant"; }
       draw(); seek(0);
-      return aiSheet(steps, `<div class="small" style="color:#aaa">Tes rushs sont quand même à la suite dans l'éditeur.</div>
-        <button class="main" id="aiOk">Voir mes rushs</button>`), ($("aiOk").onclick = () => { closeSheet(); seek(0); });
+      aiSheet(steps, `<div class="small" style="color:#aaa">Tes rushs sont quand même à la suite dans l'éditeur.</div><button class="main" id="aiOk">Voir mes rushs</button>`);
+      $("aiOk").onclick = () => { closeSheet(); seek(0); };
+      return;
     }
-    // Coupe : on ne garde que les moments où tu parles (avec un peu de marge)
-    steps[2].st = "doing"; show();
-    save();
-    const newClips = [], mapped = [];
-    let at = 0;
+
+    // 1. Découpe en morceaux : chaque phrase dite, et les plans sans parole
+    const segs = [];
     clips.forEach((c, i) => {
       const s0 = startOf(i), s1 = s0 + len(c);
       const inside = words.filter(w => w.s < s1 && w.e > s0);
-      if (!inside.length || sp(c) !== 1) {   // pas de parole (plan d'illustration) : on garde tel quel
-        newClips.push({ ...c }); at += len(c); return;
-      }
-      // regroupe les mots proches en morceaux de parole
+      if (!inside.length || sp(c) !== 1) { segs.push({ c, in: c.in, out: c.out, words: [], rush: i + 1 }); return; }
       const parts = [];
       inside.forEach(w => {
         const a = Math.max(c.in, c.in + (w.s - s0) - AI_PAD_IN), b = Math.min(c.out, c.in + (w.e - s0) + AI_PAD_OUT);
+        const src = { w: w.w, s: c.in + (w.s - s0), e: c.in + (w.e - s0) };   // temps dans le rush
         const last = parts[parts.length - 1];
-        if (last && a - last.out <= AI_GAP) last.out = Math.max(last.out, b), last.words.push(w);
-        else parts.push({ in: a, out: b, words: [w] });
+        if (last && a - last.out <= AI_GAP) { last.out = Math.max(last.out, b); last.words.push(src); }
+        else parts.push({ c, in: a, out: b, words: [src], rush: i + 1 });
       });
-      parts.forEach(p => {
-        newClips.push({ ...c, in: +p.in.toFixed(3), out: +p.out.toFixed(3) });
-        p.words.forEach(w => mapped.push({ word: w.w, start: at + (c.in + (w.s - s0)) - p.in, end: at + (c.in + (w.e - s0)) - p.in }));
-        at += p.out - p.in;
-      });
-      cutsDone += parts.length - 1 + (parts[0].in > c.in + 0.05 ? 1 : 0) + (parts[parts.length - 1].out < c.out - 0.05 ? 1 : 0);
+      segs.push(...parts);
     });
-    clips = newClips;
-    resetPlayers();
-    const gain = before - total();
-    steps[2].st = "done"; steps[2].info = cutsDone ? `${cutsDone} coupe(s), ${gain.toFixed(1)} s de blanc retirées` : "rien à couper, c'était déjà propre";
-    // Légendes, calées sur le nouveau montage
+    segs.forEach((s, k) => { s.id = "S" + (k + 1); s.text = s.words.map(w => w.w).join(" "); });
+
+    // 2. L'IA lit le prompt et décide
+    steps[2].st = "doing"; show();
+    const lib = await libList().catch(() => []);
+    let plan = null, note = "";
+    try {
+      const list = segs.map(s => `${s.id} (rush ${s.rush}, ${(s.out - s.in).toFixed(1)} s) : ${s.text ? "« " + s.text + " »" : "[plan sans parole]"}`).join("\n");
+      const sys = `Tu es un monteur vidéo TikTok expert. On te donne les morceaux d'une vidéo (dans l'ordre où ils ont été filmés) et la demande de l'utilisateur.
+Décide du montage. Par défaut : garde l'ordre, et si une phrase a été dite plusieurs fois (prises ratées, répétitions), ne garde que la meilleure version (en général la dernière). Garde les plans sans parole utiles. Respecte une durée maximale si elle est demandée.
+Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
+{"keep":["S1","S3"],"speed":{"S2":2},"volume":{"S1":1.2},"captions":{"on":true,"style":"box|karaoke|pop|classic","position":"haut|milieu|bas","size":1},"sfx":[{"name":"nom exact d'un bruitage","at":"S3","where":"start|end"}],"summary":"1 ou 2 phrases en français qui expliquent ce que tu as fait"}
+"speed" et "volume" seulement si demandé. Vitesse entre 0.5 et 100. Bruitages disponibles : ${lib.length ? lib.map(s => s.name).join(", ") : "aucun"} (n'en invente pas).`;
+      const answer = await askModel([{ role: "system", content: sys }, { role: "user", content: `Demande : ${prompt || "montage dynamique, coupe les blancs et les répétitions, légendes style Boîte"}\n\nMorceaux :\n${list}` }]);
+      plan = JSON.parse(answer.slice(answer.indexOf("{"), answer.lastIndexOf("}") + 1));
+      if (!Array.isArray(plan.keep) || !plan.keep.length) throw new Error("plan vide");
+      steps[2].st = "done"; steps[2].info = plan.summary || `${plan.keep.length} morceaux gardés sur ${segs.length}`;
+    } catch (e) {
+      plan = { keep: segs.map(s => s.id), captions: { on: true, style: "box" } };
+      steps[2].st = "fail"; steps[2].info = "IA indisponible (" + String(e.message).slice(0, 80) + ") : montage simple, blancs coupés";
+    }
+
+    // 3. Application
     steps[3].st = "doing"; show();
-    caps = chunkWords(mapped.map(m => ({ word: m.word, start: Math.max(0, m.start), end: Math.max(m.start + 0.05, m.end) })));
-    capStyle.style = capStyle.style || "box";
-    steps[3].st = "done"; steps[3].info = `${caps.length} légendes (style ${CAP_STYLES.find(s => s[0] === capStyle.style)[1]})`;
+    save();
+    const byId = Object.fromEntries(segs.map(s => [s.id, s]));
+    const kept = plan.keep.map(id => byId[String(id).trim()]).filter(Boolean);
+    const newClips = [], mapped = [], startAt = {};
+    let at = 0;
+    kept.forEach(s => {
+      const speed = Math.min(100, Math.max(0.5, +((plan.speed || {})[s.id]) || 1));
+      const vol = Math.min(2, Math.max(0, +((plan.volume || {})[s.id] ?? s.c.vol ?? 1)));
+      const clip = { ...s.c, in: +s.in.toFixed(3), out: +s.out.toFixed(3), speed, vol };
+      startAt[s.id] = at;
+      s.words.forEach(w => mapped.push({ word: w.w, start: at + (w.s - s.in) / speed, end: at + (w.e - s.in) / speed }));
+      newClips.push(clip);
+      at += len(clip);
+    });
+    if (newClips.length) clips = newClips;
+    resetPlayers();
+    const cap = plan.captions || { on: true };
+    caps = cap.on === false ? [] : chunkWords(mapped.map(m => ({ word: m.word, start: Math.max(0, m.start), end: Math.max(m.start + 0.05, m.end) })));
+    if (CAP_STYLES.some(s => s[0] === cap.style)) capStyle.style = cap.style;
+    if (cap.position) capStyle.y = /haut/i.test(cap.position) ? 0.2 : /milieu|centre/i.test(cap.position) ? 0.5 : 0.75;
+    if (+cap.size) capStyle.size = Math.min(1.8, Math.max(0.6, +cap.size));
+    // bruitages demandés
+    let sfxDone = 0;
+    for (const f of plan.sfx || []) {
+      const s = lib.find(x => x.name.toLowerCase() === String(f.name || "").toLowerCase()) || lib.find(x => x.name.toLowerCase().includes(String(f.name || "").toLowerCase()));
+      const seg = byId[f.at];
+      if (!s || !seg || startAt[f.at] === undefined) continue;
+      const ref = libRefs.get(s.id) || { lib: s.id, file: new File([s.blob], s.name + ".audio", { type: s.type || s.blob.type }), url: URL.createObjectURL(s.blob), label: s.name };
+      libRefs.set(s.id, ref);
+      const segLen = len(newClips[kept.indexOf(seg)]);
+      if (!refs.includes(ref)) refs.push(ref);
+      const d = await mediaDuration(ref);
+      audios.push({ ref, kind: "sfx", start: Math.max(0, startAt[f.at] + (f.where === "end" ? segLen - Math.min(d, segLen) : 0)), in: 0, out: d, vol: 1 });
+      sfxDone++;
+    }
+    const gain = before - total();
+    steps[3].st = "done";
+    steps[3].info = [`${kept.length} morceaux`, caps.length ? `${caps.length} légendes (${CAP_STYLES.find(s => s[0] === capStyle.style)[1]})` : "sans légendes", sfxDone ? `${sfxDone} bruitage(s)` : ""].filter(Boolean).join(" · ");
     sel = null; draw(); seek(0);
     aiSheet(steps, `<div style="margin-top:6px;font-size:15px">Ton montage est prêt : <b>${total().toFixed(1)} s</b>${gain > 0.05 ? ` (au lieu de ${before.toFixed(1)} s)` : ""}.</div>
       <button class="main" id="aiPlay">Regarder</button>

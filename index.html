@@ -241,11 +241,11 @@
  <div class="card">
   <div class="label">Montage</div>
   <h2 class="hero">Monte ta vidéo<br><b>en un geste.</b></h2>
-  <textarea id="montagePrompt" class="hidden">Sous-titres, texte à l'écran en gros, sans musique.</textarea>
+  <textarea id="montagePrompt" placeholder="Ton prompt pour le montage IA (ex : 30 s max, garde seulement les meilleures phrases, légendes karaoké en bas, rythme énergique)"></textarea>
   <input id="montageFile" type="file" accept="video/*" multiple class="hidden">
   <button class="main alt" id="montageAdd" style="margin-bottom:10px">+ Ajouter des rushs</button>
   <div id="montageInfo" class="small"></div>
-  <button class="main" id="montageGo" disabled>Lancer le montage IA</button>
+  <button class="main" id="montageGo" disabled>Montage IA</button>
   <button class="main alt" id="montageEdit" style="margin-top:8px" disabled>Table de montage</button>
   <div id="montageStatus" class="small">Ajoute tes rushs, puis choisis : montage IA (avec légendes) ou table de montage.</div>
   <div id="montageResult"></div>
@@ -352,6 +352,7 @@ const mStatus = t => document.getElementById("montageStatus").textContent = t;
 
 // Liste des rushs, dans l'ordre du montage
 let rushes = [];
+document.getElementById("montagePrompt").value = localStorage.getItem("montagePrompt") || "";
 document.getElementById("montageEdit").addEventListener("click", () => openEditor(rushes.slice()));
 document.getElementById("montageAdd").addEventListener("click", () => document.getElementById("montageFile").click());
 document.getElementById("montageFile").addEventListener("change", e => {
@@ -487,7 +488,9 @@ async function relay(path, data) {
 
 document.getElementById("montageGo").addEventListener("click", () => {
   if (!rushes.length) return;
-  openEditor(rushes.slice(), { ai: true });
+  const prompt = document.getElementById("montagePrompt").value.trim();
+  localStorage.setItem("montagePrompt", prompt);
+  openEditor(rushes.slice(), { ai: true, prompt });
 });
 
 // ----- Script : coach d'écriture IA (Groq, via le relais) -----
