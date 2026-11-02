@@ -12,7 +12,8 @@
 - Fait : couper, glisser (appui long), rallonger/raccourcir, vitesse x0,5 à x100, volume par élément, bruitages perso (gardés sur le téléphone), voix off en appui maintenu, légendes façon TikTok (Groq Whisper) modifiables et déplaçables, superpositions (vidéo/image), lecture sans noir ni latence, export qualité haute.
 - Moteur Mediabunny (vendor/) : aperçu image par image sans freeze, sur des proxys légers (432x768) fabriqués à l'import, export MP4 1080p sur le téléphone (sans Shotstack, sans logo).
 - Montage IA piloté par un prompt : écoute (Groq Whisper), découpe en phrases, Groq décide (garder/ordre/vitesse/volume/légendes/bruitages), application + écran d'étapes.
-- À venir : outil Texte + images clés (zoom/cadrage/rotation vidéo, position/taille/rotation/opacité superpositions et textes), puis assistant IA dans l'éditeur.
+- Outil Texte + images clés ◇ (vidéo : zoom/cadrage/rotation ; superpositions et textes : position/taille/rotation/opacité), gestes 1 et 2 doigts, outil Ajuster.
+- À venir : assistant IA dans l'éditeur.
 - Outil Caméra dans l'éditeur : appui maintenu = selfie inséré à la barre blanche, appui simple = caméra complète.
 - Adapter une vidéo virale : le relais récupère la vidéo TikTok (/tiktok-video) et Groq Whisper écoute ce qui est dit.
 - Shotstack ne sert plus pour l'export (gardé pour un futur montage IA).

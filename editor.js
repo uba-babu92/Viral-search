@@ -32,6 +32,8 @@
     back: '<path d="m15 18-6-6 6-6"/>',
     cam: '<path d="m16 13 5 3V8l-5 3"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    kf: '<path d="M12 3 21 12 12 21 3 12z"/>',
+    adjust: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
   };
   const ic = (n, s = 22) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
 
@@ -102,6 +104,14 @@
   .ebig { text-align: center; font-size: 28px; font-weight: 700; }
   .espin { display: inline-block; width: 12px; height: 12px; border: 2px solid #555; border-top-color: #FF5A4E; border-radius: 50%; animation: espin .8s linear infinite; }
   @keyframes espin { to { transform: rotate(360deg); } }
+  .ekf { position: absolute; top: 50%; width: 10px; height: 10px; margin-top: -6px; background: #fff; border: 1px solid #000; transform: rotate(45deg); z-index: 2; }
+  .eit.txt { background-color: #3a3a3a; }
+  #edKf { border: 0; background: none; color: #ddd; display: flex; padding: 0; }
+  #edKf.on { color: #FF5A4E; }
+  #edKf.on svg path { fill: #FF5A4E; }
+  #edKf:disabled { color: #444; }
+  .etx { position: absolute; transform: translate(-50%, -50%); color: transparent; font-weight: 800; white-space: pre; text-align: center; line-height: 1.1; z-index: 3; touch-action: none; padding: 4px 8px; border-radius: 6px; }
+  .etx.sel, .eov.sel { outline: 2px solid #fff; }
   #edToast { position: absolute; top: 35%; left: 20px; right: 20px; text-align: center; background: #000c; color: #fff; padding: 12px; border-radius: 10px; z-index: 9; pointer-events: none; }
   </style>`);
 
@@ -111,11 +121,11 @@
     <div class="etop"><button id="edClose">${ic("x", 26)}</button><span class="grow" id="edProxy" style="font-size:12px;color:#888"></span><span class="epill">1080p</span><button id="edExport">Exporter</button></div>
     <div class="eprev"><div class="stage" id="edStage">
       <canvas id="edCanvas"></canvas>
-      <div id="edOvs"></div><div id="edCap" class="hidden"></div>
+      <div id="edOvs"></div><div id="edTxs"></div><div id="edCap" class="hidden"></div>
       <video id="edPip" class="hidden" playsinline muted autoplay></video>
     </div></div>
     <div class="ectrl"><span id="edTime"><b>00:00</b> / 00:00</span><button id="edPlay">${ic("play", 30)}</button>
-      <span class="eundo"><button id="edUndo">${ic("undo")}</button><button id="edRedo">${ic("redo")}</button></span></div>
+      <span class="eundo"><button id="edKf" title="Image clé">${ic("kf")}</button><button id="edUndo">${ic("undo")}</button><button id="edRedo">${ic("redo")}</button></span></div>
     <div class="ewrap">
       <div id="edTl"><div id="edInner"><div id="edRuler"></div><div id="edItems"></div></div></div>
       <div id="edLeft"><button id="edMute">${ic("vol", 20)}<span>Son du clip</span></button></div>
@@ -137,6 +147,7 @@
   let audios = [];     // sons : {ref, kind:"sfx"|"voice", start, in, out, vol}
   let overlays = [];   // superpositions : {ref, start, in, out, vol, x, y, scale}
   let caps = [];       // légendes : {text, start, in, out}
+  let texts = [];      // textes libres : {text, start, in, out, x, y, scale, rot, op, kf}
   let capStyle = { x: 0.5, y: 0.7, size: 1, style: "box" };
   let clipMute = false;
   let sel = null;      // {type:"v"|"a"|"o"|"c", i}
@@ -151,7 +162,7 @@
   const total = () => clips.reduce((s, c) => s + len(c), 0);
   const startOf = i => clips.slice(0, i).reduce((s, c) => s + len(c), 0);
   const half = () => tl.clientWidth / 2;
-  const arr = k => (k === "a" ? audios : k === "o" ? overlays : caps);
+  const arr = k => (k === "a" ? audios : k === "o" ? overlays : k === "t" ? texts : caps);
   const fmt = s => { s = Math.max(0, s); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(Math.floor(s % 60)).padStart(2, "0"); };
   let lastTime = "";
   const showTime = () => { const h = `<b>${fmt(t)}</b> / ${fmt(total())}`; if (h !== lastTime) $("edTime").innerHTML = lastTime = h; };
@@ -181,15 +192,17 @@
   const libDel = async id => req((await store("readwrite")).delete(id));
 
   // ---------- Historique ----------
-  const snap = () => JSON.stringify({ clips, audios, overlays, caps, capStyle, clipMute }, (k, v) => (k === "ref" ? refs.indexOf(v) : v));
+  const snap = () => JSON.stringify({ clips, audios, overlays, caps, texts, capStyle, clipMute }, (k, v) => (k === "ref" ? refs.indexOf(v) : v));
   function save() { past.push(snap()); if (past.length > 60) past.shift(); future.length = 0; updUndo(); }
   function updUndo() { $("edUndo").disabled = !past.length; $("edRedo").disabled = !future.length; }
   function restore(str) {
     const s = JSON.parse(str, (k, v) => (k === "ref" ? refs[v] : v));
     ({ clips, audios, overlays, caps, capStyle, clipMute } = s);
+    texts = s.texts || [];
     sel = null; resetPlayers();
     draw(); seek(Math.min(t, total())); updUndo();
   }
+  $("edKf").onclick = () => toggleKf();
   $("edUndo").onclick = () => { if (past.length) { future.push(snap()); restore(past.pop()); } };
   $("edRedo").onclick = () => { if (future.length) { past.push(snap()); restore(future.pop()); } };
 
@@ -208,7 +221,7 @@
       if (added.length) await addVideos(added);
       resetPlayers(); draw(); seek(Math.min(t, total()));
     } else {
-      refs = []; clips = []; audios = []; overlays = []; caps = []; sel = null;
+      refs = []; clips = []; audios = []; overlays = []; caps = []; texts = []; sel = null;
       capStyle = { x: 0.5, y: 0.7, size: 1, style: "box" }; clipMute = false;
       past.length = future.length = 0; updUndo();
       resetPlayers();
@@ -241,6 +254,47 @@
     draw();
   }
 
+  // ---------- Images clés (comme CapCut) ----------
+  // Chaque élément animable a des valeurs de base et, s'il en a, des clés {t (secondes depuis son début), v:{...}}.
+  const PROPS = { v: ["x", "y", "scale", "rot"], o: ["x", "y", "scale", "rot", "op"], t: ["x", "y", "scale", "rot", "op"] };
+  const DEF = { x: 0, y: 0, scale: 1, rot: 0, op: 1 };
+  const easeIO = u => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+  const itemOf = (k, i) => (k === "v" ? clips[i] : arr(k)[i]);
+  const startOfItem = (k, i) => (k === "v" ? startOf(i) : arr(k)[i].start);
+  function baseOf(k, it) { const o = {}; PROPS[k].forEach(p => (o[p] = it[p] ?? DEF[p])); return o; }
+  function valAt(k, it, local) {
+    const b = baseOf(k, it), kf = it.kf;
+    if (!kf || !kf.length) return b;
+    if (local <= kf[0].t) return { ...b, ...kf[0].v };
+    if (local >= kf[kf.length - 1].t) return { ...b, ...kf[kf.length - 1].v };
+    let j = 0; while (kf[j + 1].t < local) j++;
+    const A = kf[j], B = kf[j + 1], u = easeIO((local - A.t) / Math.max(1e-6, B.t - A.t)), o = { ...b };
+    PROPS[k].forEach(p => { const a = A.v[p] ?? b[p], c = B.v[p] ?? b[p]; o[p] = a + (c - a) * u; });
+    return o;
+  }
+  const kfNear = (it, local) => (it.kf || []).findIndex(k => Math.abs(k.t - local) < 0.6 / FPS);
+  // Modifie un élément : s'il a des clés, la modification crée/met à jour la clé à cet instant (comme CapCut)
+  function setProps(k, i, changes) {
+    const it = itemOf(k, i), local = t - startOfItem(k, i);
+    if (it.kf && it.kf.length) {
+      let j = kfNear(it, local);
+      if (j < 0) { it.kf.push({ t: +local.toFixed(3), v: valAt(k, it, local) }); it.kf.sort((a, b) => a.t - b.t); j = kfNear(it, local); }
+      Object.assign(it.kf[j].v, changes);
+    } else Object.assign(it, changes);
+  }
+  function toggleKf() {
+    if (!sel || !PROPS[sel.type]) return toast("Sélectionne un plan, une superposition ou un texte");
+    const it = itemOf(sel.type, sel.i), local = t - startOfItem(sel.type, sel.i), l = len(it);
+    if (local < -0.01 || local > l + 0.01) return toast("Place la barre blanche sur l'élément sélectionné");
+    pause(); save();
+    it.kf = it.kf || [];
+    const j = kfNear(it, local);
+    if (j >= 0) { it.kf.splice(j, 1); toast("Clé supprimée"); }
+    else { it.kf.push({ t: +Math.max(0, Math.min(l, local)).toFixed(3), v: valAt(sel.type, it, local) }); it.kf.sort((a, b) => a.t - b.t); toast("Clé ajoutée : déplace la barre et modifie l'élément pour l'animer", 3000); }
+    draw(); renderStill(t);
+  }
+  const kfMarks = (k, it) => (it.kf || []).map(x => `<i class="ekf" data-kt="${x.t}" style="left:${x.t * PPS - 6}px"></i>`).join("");
+
   // ---------- Dessin ----------
   function lanes(list) { // place les éléments sur des lignes sans chevauchement
     const ends = [];
@@ -255,15 +309,16 @@
 
   function itemHtml(k, x, i, top, cls, label, bg = "") {
     const on = sel && sel.type === k && sel.i === i, h = half();
-    return `<div class="eit ${cls}${on ? " sel" : ""}" data-k="${k}" data-i="${i}" style="left:${h + x.start * PPS}px;top:${top}px;width:${Math.max(10, len(x) * PPS)}px;${bg}"><span>${label}</span>
+    return `<div class="eit ${cls}${on ? " sel" : ""}" data-k="${k}" data-i="${i}" style="left:${h + x.start * PPS}px;top:${top}px;width:${Math.max(10, len(x) * PPS)}px;${bg}"><span>${label}</span>${PROPS[k] ? kfMarks(k, x) : ""}
       ${on ? `<div class="ehandle l" data-h="l">‹</div><div class="ehandle r" data-h="r">›</div>` : ""}</div>`;
   }
 
   function draw() {
     const h = half(), tot = total(), w = Math.max(tot * PPS, 170);
-    const ovL = lanes(overlays), auL = lanes(audios);
+    const ovL = lanes(overlays), auL = lanes(audios), txL = lanes(texts);
     let y = VIDEO_Y + VIDEO_H + 8;
     const ovY = y; y += Math.max(1, nl(ovL)) * ROW_H;
+    const txY = y; y += Math.max(1, nl(txL)) * ROW_H;
     const capY = y; y += ROW_H;
     const auY = y; y += (nl(auL) + 1) * ROW_H;
     inner.style.width = (tot * PPS + 2 * h) + "px";   // la ligne s'arrête à la fin du montage
@@ -281,12 +336,14 @@
       const cw = Math.max(6, len(c) * PPS), on = sel && sel.type === "v" && sel.i === i;
       const bg = c.ref.thumb ? `background-image:url(${c.ref.thumb});` : "";
       const badge = [sp(c) !== 1 ? "x" + sp(c) : "", c.vol === 0 ? "" : ""].filter(Boolean).join(" ");
-      html += `<div class="eclip${on ? " sel" : ""}" data-k="v" data-i="${i}" style="left:${x}px;top:${VIDEO_Y}px;width:${cw}px;height:${VIDEO_H}px;${bg}"><span>${fmt(len(c))}</span>${badge ? `<em>${badge}</em>` : ""}
+      html += `<div class="eclip${on ? " sel" : ""}" data-k="v" data-i="${i}" style="left:${x}px;top:${VIDEO_Y}px;width:${cw}px;height:${VIDEO_H}px;${bg}"><span>${fmt(len(c))}</span>${badge ? `<em>${badge}</em>` : ""}${kfMarks("v", c)}
         ${on ? `<div class="ehandle l" data-h="l">‹</div><div class="ehandle r" data-h="r">›</div>` : ""}</div>`;
       x += cw;
     });
     if (overlays.length) overlays.forEach((o, i) => html += itemHtml("o", o, i, ovY + ovL[i] * ROW_H, "ov", "Superposition", o.ref.thumb ? `background-image:url(${o.ref.thumb});` : ""));
     else html += `<div class="eph" data-ph="ov" style="left:${h}px;top:${ovY}px;width:${w}px">+ Ajouter une superposition</div>`;
+    if (texts.length) texts.forEach((x, i) => html += itemHtml("t", x, i, txY + txL[i] * ROW_H, "txt", "T  " + esc(x.text)));
+    else html += `<div class="eph" data-ph="txt" style="left:${h}px;top:${txY}px;width:${w}px">+ Ajouter un texte</div>`;
     if (caps.length) caps.forEach((c, i) => html += itemHtml("c", c, i, capY, "cap", esc(c.text)));
     else html += `<div class="eph" data-ph="cap" style="left:${h}px;top:${capY}px;width:${w}px">+ Générer des légendes</div>`;
     audios.forEach((a, i) => html += itemHtml("a", a, i, auY + auL[i] * ROW_H, a.kind, esc(a.ref.label || "Son")));
@@ -297,7 +354,14 @@
     drawOverlays();
     drawCaption();
     drawTools();
+    updKf();
     showTime();
+  }
+  function updKf() {   // le bouton ◇ est plein quand une clé est sous la barre blanche
+    const b = $("edKf");
+    if (!sel || !PROPS[sel.type]) { b.disabled = true; b.classList.remove("on"); return; }
+    b.disabled = false;
+    b.classList.toggle("on", kfNear(itemOf(sel.type, sel.i), t - startOfItem(sel.type, sel.i)) >= 0);
   }
 
   // Barre d'outils du bas : change selon ce qui est sélectionné, défile si trop d'outils
@@ -306,11 +370,12 @@
     const back = `<button data-t="back" class="back">${ic("back")}</button>`;
     let html;
     if (!sel) html = b("edit", "scissors", "Modifier") + b("sound", "note", "Son")
-      + b("voice", "mic", voiceRec ? "Parle…" : "Voix off", voiceRec ? "rec" : "") + b("captions", "captions", "Légendes") + b("overlay", "overlay", "Superposition")
+      + b("voice", "mic", voiceRec ? "Parle…" : "Voix off", voiceRec ? "rec" : "") + b("captions", "captions", "Légendes") + b("addtext", "text", "Texte") + b("overlay", "overlay", "Superposition")
       + b("camera", "cam", camRec ? "Filme…" : "Caméra", camRec ? "rec" : "");
-    else if (sel.type === "v") html = back + b("split", "split", "Diviser") + b("speed", "speed", "Vitesse") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
+    else if (sel.type === "v") html = back + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("speed", "speed", "Vitesse") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "a") html = back + b("split", "split", "Diviser") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
-    else if (sel.type === "o") html = back + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
+    else if (sel.type === "o") html = back + b("adjust", "adjust", "Ajuster") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
+    else if (sel.type === "t") html = back + b("edittext", "text", "Modifier") + b("adjust", "adjust", "Ajuster") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else html = back + b("style", "captions", "Style") + b("text", "text", "Modifier le texte") + b("del", "trash", "Supprimer") + b("delcaps", "trash", "Tout supprimer");
     $("edTools").innerHTML = html;
   }
@@ -330,12 +395,31 @@
       }
       e.i = i;
       e.box.classList.toggle("sel", !!(sel && sel.type === "o" && sel.i === i));
-      e.box.style.left = o.x * 100 + "%";
-      e.box.style.top = o.y * 100 + "%";
-      e.box.style.width = o.scale * 100 + "%";
+      const v = valAt("o", o, t - o.start);
+      e.box.style.left = v.x * 100 + "%";
+      e.box.style.top = v.y * 100 + "%";
+      e.box.style.width = v.scale * 100 + "%";
+      e.box.style.transform = `translate(-50%, -50%) rotate(${v.rot}deg)`;
       e.box.style.display = t >= o.start && t < o.start + len(o) ? "" : "none";
     });
     ovEls.forEach((e, o) => { if (!overlays.includes(o)) { e.box.remove(); ovEls.delete(o); } });
+    drawTextBoxes();
+  }
+  const txEls = new Map();
+  function drawTextBoxes() {
+    texts.forEach((x, i) => {
+      let e = txEls.get(x);
+      if (!e) { const box = document.createElement("div"); box.className = "etx"; $("edTxs").append(box); txEls.set(x, (e = { box })); }
+      e.i = i;
+      const v = valAt("t", x, t - x.start);
+      e.box.textContent = x.text;
+      e.box.style.left = v.x * 100 + "%"; e.box.style.top = v.y * 100 + "%";
+      e.box.style.fontSize = stage.clientHeight * TXT_RATIO * v.scale + "px";
+      e.box.style.transform = `translate(-50%, -50%) rotate(${v.rot}deg)`;
+      e.box.classList.toggle("sel", !!(sel && sel.type === "t" && sel.i === i));
+      e.box.style.display = t >= x.start && t < x.start + len(x) ? "" : "none";
+    });
+    txEls.forEach((e, x) => { if (!texts.includes(x)) { e.box.remove(); txEls.delete(x); } });
   }
   function drawCaption() {
     const el = $("edCap");
@@ -350,9 +434,63 @@
   }
 
   // Déplacer / agrandir sur l'aperçu (superpositions et légendes)
+  // Gestes à 1 doigt (déplacer) et 2 doigts (agrandir / tourner), comme CapCut
+  const touches = new Map();
+  let gest = null, suppressClick = false;
+  stage.addEventListener("pointerdown", e => {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const tb = e.target.closest(".etx");
+    const ob = e.target.closest(".eov");
+    let k = null, i = -1;
+    if (tb) { k = "t"; i = [...txEls.values()].find(v => v.box === tb).i; }
+    else if (ob && !e.target.closest(".ox") && !e.target.closest(".orz")) { k = "o"; i = [...ovEls.values()].find(v => v.box === ob).i; }
+    else if (gest && touches.size === 2) k = gest.k, i = gest.i;
+    else if (e.target === view && sel && sel.type === "v") { k = "v"; i = sel.i; }
+    if (!k) return;
+    e.preventDefault();
+    pause();
+    if (!gest) { save(); if (!(sel && sel.type === k && sel.i === i)) { sel = { type: k, i }; draw(); } }
+    const it = itemOf(k, i), local = t - startOfItem(k, i);
+    const pts = [...touches.values()];
+    const mid = pts.length > 1 ? { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 } : pts[0];
+    gest = { k, i, v0: valAt(k, it, local), mid0: mid, d0: pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0,
+      a0: pts.length > 1 ? Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x) : 0, moved: false };
+  }, { capture: true });
+  window.addEventListener("pointermove", e => {
+    if (!touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!gest) return;
+    const r = stage.getBoundingClientRect(), pts = [...touches.values()];
+    const mid = pts.length > 1 ? { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 } : pts[0];
+    const ch = { x: gest.v0.x + (mid.x - gest.mid0.x) / r.width, y: gest.v0.y + (mid.y - gest.mid0.y) / r.height };
+    if (Math.hypot(mid.x - gest.mid0.x, mid.y - gest.mid0.y) > 4) gest.moved = true;
+    if (pts.length > 1 && gest.d0) {
+      const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y), a = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+      ch.scale = Math.min(gest.k === "v" ? 5 : 4, Math.max(gest.k === "v" ? 0.5 : 0.1, gest.v0.scale * d / gest.d0));
+      ch.rot = gest.v0.rot + (a - gest.a0) * 180 / Math.PI;
+      gest.moved = true;
+    }
+    if (gest.k !== "v") { ch.x = Math.min(1.2, Math.max(-0.2, ch.x)); ch.y = Math.min(1.2, Math.max(-0.2, ch.y)); }
+    setProps(gest.k, gest.i, ch);
+    drawOverlays(); renderStill(t);
+  });
+  const endTouch = e => {
+    touches.delete(e.pointerId);
+    if (!gest) return;
+    if (touches.size === 1) {   // on repasse à un doigt : nouveau point de départ
+      const it = itemOf(gest.k, gest.i);
+      gest.v0 = valAt(gest.k, it, t - startOfItem(gest.k, gest.i)); gest.mid0 = [...touches.values()][0]; gest.d0 = 0;
+      return;
+    }
+    if (!touches.size) { if (gest.moved) suppressClick = true; gest = null; draw(); renderStill(t); }
+  };
+  window.addEventListener("pointerup", endTouch);
+  window.addEventListener("pointercancel", endTouch);
+
   stage.addEventListener("pointerdown", e => {
     const capEl = e.target.closest("#edCap"), box = e.target.closest(".eov");
     if (!capEl && !box) return;
+    if (box && !e.target.closest(".ox") && !e.target.closest(".orz")) return;   // déplacement géré au-dessus
     e.preventDefault();
     pause();
     const r = stage.getBoundingClientRect();
@@ -372,11 +510,9 @@
     if (e.target.closest(".ox")) { save(); overlays.splice(entry.i, 1); sel = null; return draw(); }
     save();
     sel = { type: "o", i: entry.i }; draw();
-    const x0 = e.clientX, y0 = e.clientY, ox = o.x, oy = o.y, os = o.scale;
-    const resize = !!e.target.closest(".orz");
+    const x0 = e.clientX, y0 = e.clientY, os = valAt("o", o, t - o.start).scale;
     dragOn(ev => {
-      if (resize) o.scale = Math.min(1.5, Math.max(0.15, os + ((ev.clientX - x0) + (ev.clientY - y0) * 9 / 16) / r.width));
-      else { o.x = Math.min(1, Math.max(0, ox + (ev.clientX - x0) / r.width)); o.y = Math.min(1, Math.max(0, oy + (ev.clientY - y0) / r.height)); }
+      setProps("o", entry.i, { scale: Math.min(4, Math.max(0.1, os + ((ev.clientX - x0) + (ev.clientY - y0) * 9 / 16) / r.width)) });
       drawOverlays(); if (!playing) renderStill(t);
     });
   });
@@ -516,12 +652,44 @@
   function closeFeeds() { feeds.forEach(f => f.close()); feeds.clear(); }
 
   // Dessin d'une image complète (plan + superpositions) sur un canvas
-  function drawOverlayImg(g, W, H, src, o) {
-    const bw = o.scale * W, bh = bw * 16 / 9, x = o.x * W - bw / 2, y = o.y * H - bh / 2;
+  const TXT_RATIO = 0.06;
+  function drawMain(g, W, H, src, c, local) {   // plan principal avec zoom / cadrage / rotation
+    const v = valAt("v", c, local);
+    if (v.scale === 1 && !v.x && !v.y && !v.rot) return g.drawImage(src, 0, 0, W, H);
+    g.save();
+    g.translate(W / 2 + v.x * W, H / 2 + v.y * H); g.rotate(v.rot * Math.PI / 180); g.scale(v.scale, v.scale);
+    g.drawImage(src, -W / 2, -H / 2, W, H);
+    g.restore();
+  }
+  function drawOverlayImg(g, W, H, src, o, local = t - o.start) {
+    const v = valAt("o", o, local);
+    const bw = v.scale * W, bh = bw * 16 / 9;
+    g.save();
+    g.globalAlpha = Math.max(0, Math.min(1, v.op));
+    g.translate(v.x * W, v.y * H); g.rotate(v.rot * Math.PI / 180);
     if (src instanceof HTMLImageElement) {
       const r = Math.min(bw / src.naturalWidth, bh / src.naturalHeight), w = src.naturalWidth * r, h = src.naturalHeight * r;
-      g.drawImage(src, x + (bw - w) / 2, y + (bh - h) / 2, w, h);
-    } else g.drawImage(src, x, y, bw, bh);
+      g.drawImage(src, -w / 2, -h / 2, w, h);
+    } else g.drawImage(src, -bw / 2, -bh / 2, bw, bh);
+    g.restore();
+  }
+  function drawTexts(g, W, H, time) {
+    texts.forEach(x => {
+      if (time < x.start || time >= x.start + len(x)) return;
+      const v = valAt("t", x, time - x.start), size = H * TXT_RATIO * v.scale;
+      g.save();
+      g.globalAlpha = Math.max(0, Math.min(1, v.op));
+      g.translate(v.x * W, v.y * H); g.rotate(v.rot * Math.PI / 180);
+      g.font = `800 ${size}px Inter, system-ui, sans-serif`;
+      g.textAlign = "center"; g.textBaseline = "middle"; g.lineJoin = "round";
+      const lines = String(x.text).split("\n"), lh = size * 1.1;
+      lines.forEach((l, j) => {
+        const y = (j - (lines.length - 1) / 2) * lh;
+        g.lineWidth = size * 0.14; g.strokeStyle = "#000"; g.strokeText(l, 0, y);
+        g.fillStyle = "#fff"; g.fillText(l, 0, y);
+      });
+      g.restore();
+    });
   }
   let lastMain = null;
   function renderPlaying(time) {
@@ -533,15 +701,16 @@
     if (img) lastMain = img;
     if (!lastMain) return;   // rien de décodé encore : on garde l'image affichée
     vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH);
-    vg.drawImage(lastMain, 0, 0, PW, PH);
+    drawMain(vg, PW, PH, lastMain, c, off);
     // prépare le plan suivant à l'avance : zéro latence au passage
     if (clips[i + 1] && len(c) - off < 1.5) feedFor(clips[i + 1], 0);
     overlays.forEach(o => {
       if (time < o.start || time >= o.start + len(o)) return;
-      if (o.ref.image) { if (o.ref._m) drawOverlayImg(vg, PW, PH, o.ref._m.image, o); return; }
+      if (o.ref.image) { if (o.ref._m) drawOverlayImg(vg, PW, PH, o.ref._m.image, o, time - o.start); return; }
       const ko = Math.floor((time - o.start) * FPS + 1e-6), fo = feedFor(o, ko), im = fo && fo.frame(ko);
-      if (im) drawOverlayImg(vg, PW, PH, im, o);
+      if (im) drawOverlayImg(vg, PW, PH, im, o, time - o.start);
     });
+    drawTexts(vg, PW, PH, time);
     drawCaps(vg, PW, PH, time);
     // libère les flux qui ne servent plus
     feeds.forEach((f, item) => {
@@ -567,8 +736,9 @@
     }
     if (my !== stillToken) return;
     vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH);
-    if (w) { vg.drawImage(w.canvas, 0, 0, PW, PH); lastMain = null; }
-    ovs.forEach(([src, o]) => drawOverlayImg(vg, PW, PH, src, o));
+    if (w) { drawMain(vg, PW, PH, w.canvas, c, off); lastMain = null; }
+    ovs.forEach(([src, o]) => drawOverlayImg(vg, PW, PH, src, o, time - o.start));
+    drawTexts(vg, PW, PH, time);
     drawCaps(vg, PW, PH, time);
   }
 
@@ -602,7 +772,7 @@
     tl.scrollLeft = time * PPS;
     requestAnimationFrame(() => (programmatic = false));
   }
-  function refreshAt() { drawOverlays(); drawCaption(); showTime(); }
+  function refreshAt() { drawOverlays(); drawCaption(); showTime(); if (!playing) updKf(); }
   function seek(time) {
     t = Math.min(Math.max(0, time), total());
     setScroll(t);
@@ -639,7 +809,7 @@
     renderStill(t);
   }
   $("edPlay").onclick = () => (playing ? pause() : play());
-  view.addEventListener("click", () => (playing ? pause() : play()));
+  view.addEventListener("click", () => { if (suppressClick) { suppressClick = false; return; } playing ? pause() : play(); });
 
   function loop() {
     if (!playing) return;
@@ -674,6 +844,8 @@
     const el = e.target.closest("[data-k]");
     if (!el) return;
     const kind = el.dataset.k, i = +el.dataset.i;
+    const kfEl = e.target.closest(".ekf");
+    if (kfEl) { e.preventDefault(); pause(); sel = { type: kind, i }; seek(startOfItem(kind, i) + +kfEl.dataset.kt); draw(); return; }
     const handle = e.target.closest(".ehandle");
     if (handle) { e.preventDefault(); return startTrim(e, kind, i, handle.dataset.h); }
     const picked = kind !== "v" && sel && sel.type === kind && sel.i === i;
@@ -694,6 +866,7 @@
       if (press.ph === "sound") soundSheet();
       else if (press.ph === "cap") captionSheet();
       else if (press.ph === "ov") $("edOvFile").click();
+      else if (press.ph === "txt") textAddSheet();
       else {
         const same = sel && sel.type === press.kind && sel.i === press.i;
         sel = same ? null : { type: press.kind, i: press.i };
@@ -855,6 +1028,9 @@
       sel = null;
     } else if (name === "delcaps") { save(); caps = []; sel = null; }
     else if (name === "speed") return speedSheet();
+    else if (name === "adjust") return adjustSheet();
+    else if (name === "addtext") return textAddSheet();
+    else if (name === "edittext") return textAddSheet(sel.i);
     else if (name === "volume") return volumeSheet();
     else if (name === "text") return textSheet();
     else if (name === "style") return styleSheet();
@@ -863,6 +1039,47 @@
     else if (name === "overlay") return $("edOvFile").click();
     if (changed) resetPlayers();
     draw(); seek(Math.min(t, total()));
+  }
+
+  // ----- Texte libre -----
+  function textAddSheet(edit) {
+    pause();
+    const cur = edit !== undefined ? texts[edit] : null;
+    sheet(`<b>${cur ? "Modifier le texte" : "Ajouter un texte"}</b>
+      <input type="text" id="edTxt" value="${cur ? esc(cur.text) : ""}" placeholder="Ton texte">
+      <button class="main" id="edTxtOk">OK</button>`);
+    setTimeout(() => $("edTxt").focus(), 50);
+    $("edTxtOk").onclick = () => {
+      const v = $("edTxt").value.trim();
+      if (!v) return closeSheet();
+      save();
+      if (cur) cur.text = v;
+      else {
+        const start = Math.min(t, Math.max(0, total() - 0.5));
+        texts.push({ text: v, start, in: 0, out: Math.max(0.5, Math.min(3, total() - start)), x: 0.5, y: 0.35, scale: 1, rot: 0, op: 1, kf: [] });
+        sel = { type: "t", i: texts.length - 1 };
+      }
+      closeSheet(); draw(); renderStill(t);
+      if (!cur) toast("Glisse le texte sur l'image, pince pour l'agrandir ou le tourner. ◇ pour l'animer.", 3500);
+    };
+  }
+  // ----- Ajuster : zoom / taille, rotation, transparence (crée une clé si l'élément est animé) -----
+  function adjustSheet() {
+    const k = sel.type, i = sel.i, it = itemOf(k, i), v = valAt(k, it, t - startOfItem(k, i));
+    save();
+    const row = (id, label, min, max, val) => `<div style="display:flex;justify-content:space-between;font-size:13px"><span>${label}</span><span id="${id}V">${val}</span></div><input type="range" id="${id}" min="${min}" max="${max}" value="${val}">`;
+    sheet(`<b>Ajuster</b>${it.kf && it.kf.length ? `<div class="small" style="color:#999">Élément animé : les changements créent une clé à cet instant.</div>` : ""}
+      ${row("adS", k === "v" ? "Zoom (%)" : "Taille (%)", k === "v" ? 50 : 10, k === "v" ? 400 : 300, Math.round(v.scale * 100))}
+      ${row("adR", "Rotation (°)", -180, 180, Math.round(v.rot))}
+      ${k === "v" ? row("adX", "Cadrage horizontal (%)", -50, 50, Math.round(v.x * 100)) + row("adY", "Cadrage vertical (%)", -50, 50, Math.round(v.y * 100)) : row("adO", "Opacité (%)", 0, 100, Math.round(v.op * 100))}
+      <button class="main alt" id="adReset">Réinitialiser</button>`);
+    const map = { adS: ["scale", 100], adR: ["rot", 1], adX: ["x", 100], adY: ["y", 100], adO: ["op", 100] };
+    Object.entries(map).forEach(([id, [p, div]]) => {
+      const el = $(id);
+      if (!el) return;
+      el.oninput = () => { $(id + "V").textContent = el.value; setProps(k, i, { [p]: +el.value / div }); drawOverlays(); renderStill(t); };
+    });
+    $("adReset").onclick = () => { it.kf = []; PROPS[k].forEach(p => delete it[p]); if (k !== "v") { it.x = 0.5; it.y = 0.4; } closeSheet(); draw(); renderStill(t); };
   }
 
   // ----- Vitesse (x0,5 à x100) -----
@@ -1118,7 +1335,7 @@
       added += d - start;
       if (typeof makeThumb === "function") makeThumb(r).then(draw);
     }
-    [...audios, ...overlays, ...caps].forEach(x => { if (x.start >= at - 0.01) x.start += added; });   // le reste suit
+    [...audios, ...overlays, ...caps, ...texts].forEach(x => { if (x.start >= at - 0.01) x.start += added; });   // le reste suit
     sel = null; resetPlayers(); draw(); seek(at + added);   // la barre passe après le nouveau rush
     toast("Rush ajouté ");
   }
@@ -1462,17 +1679,18 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
         }
         if (it) { const r = await it.next(); if (!r.done && r.value) frame = r.value.canvas; }
         g.fillStyle = "#000"; g.fillRect(0, 0, EW, EH);
-        if (frame) g.drawImage(frame, 0, 0, EW, EH);
+        if (frame && ci >= 0) drawMain(g, EW, EH, frame, clips[ci], tt - clipRange[ci][2]);
         // superpositions
         for (let j = 0; j < overlays.length; j++) {
           const o = overlays[j], [a, b] = ovRange[j];
           if (n < a || n >= b) continue;
-          if (o.ref.image) { drawOverlayImg(g, EW, EH, o.ref._m.image, o); continue; }
+          if (o.ref.image) { drawOverlayImg(g, EW, EH, o.ref._m.image, o, tt - o.start); continue; }
           if (!ovIt[j] && o.ref._m.v) ovIt[j] = fullFrames(o, a, b, o.start);
           if (ovIt[j]) { const r = await ovIt[j].next(); if (!r.done && r.value) ovFrame[j] = r.value.canvas; }
-          if (ovFrame[j]) drawOverlayImg(g, EW, EH, ovFrame[j], o);
+          if (ovFrame[j]) drawOverlayImg(g, EW, EH, ovFrame[j], o, tt - o.start);
         }
         // légendes
+        drawTexts(g, EW, EH, tt);
         drawCaps(g, EW, EH, tt);
         await vs.add(tt, 1 / FPS);
         if (n % 10 === 0) say(`Export : ${Math.round(n / N * 100)} %`);
