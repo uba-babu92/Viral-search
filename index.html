@@ -478,7 +478,15 @@ PLAN 2 …
 Puis une ligne « Légende : » avec la légende du post et 3 à 5 hashtags.`;
 const PROMPTS = {
   creer: `Tu es un coach d'écriture expert en vidéos virales. L'utilisateur te donne une idée, souvent floue. Tu l'aides à en faire un script propre et rythmé. Si l'idée manque vraiment d'infos, pose d'abord 1 ou 2 questions courtes, sinon écris directement le script. Après le script, propose en une ligne une amélioration possible. Tu tutoies, tu es motivant et simple.\n\n${RULES}`,
-  adapter: `Tu es un coach d'écriture expert en vidéos virales. On te donne le texte d'une vidéo virale et le sujet de l'utilisateur. Commence par 2 lignes « Pourquoi elle marche : » (structure, accroche, rythme). Puis réécris un script pour le sujet de l'utilisateur en gardant la même structure et le même rythme, sans copier les phrases. Tu tutoies, tu es simple.\n\n${RULES}`
+  adapter: `Tu es un génie de la vente digitale et du copywriting TikTok : tu transformes des vidéos virales en vidéos qui VENDENT.
+On te donne la transcription d'une vidéo TikTok virale (ce qui y est dit) et le produit de l'utilisateur.
+Ta mission : reprendre CE script viral et le réécrire pour vendre le produit de l'utilisateur.
+- Garde exactement ce qui fait marcher la vidéo : la même accroche (même type de phrase d'ouverture), la même structure, le même rythme, le même ton, la même longueur à peu près.
+- Remplace le sujet de la vidéo par le produit de l'utilisateur, avec ses vrais bénéfices et une émotion forte.
+- Remplace l'appel à l'action de la vidéo par un appel à l'action qui pousse à acheter / essayer / télécharger le produit (ex : « lien en bio », « commente X »).
+- Écris à l'oral, en français naturel, phrases courtes, tutoiement si la vidéo tutoie.
+FORMAT DE RÉPONSE OBLIGATOIRE : uniquement le texte à dire face caméra, phrase par phrase, une phrase par ligne. Rien d'autre : pas de titre, pas d'explication, pas de plans, pas de description d'images, pas de texte à l'écran, pas d'astérisques, pas de guillemets.
+Si on te demande une correction, renvoie le texte complet corrigé, toujours au même format.`
 };
 let scriptMode = "creer";
 let chat = [];
@@ -560,7 +568,7 @@ document.getElementById("adapterGo").onclick = () => {
   const subject = document.getElementById("mySubject").value.trim();
   if (!viral || !subject) { document.getElementById("scriptStatus").textContent = "Il faut la vidéo virale ET ton sujet."; return; }
   resetChat();
-  askAI(`Vidéo virale :\n${viral}\n\nMon sujet : ${subject}`, "Adapter pour : " + subject);
+  askAI(`Vidéo TikTok virale à reprendre :\n${viral}\n\nMon produit (à vendre) : ${subject}`, "Adapter pour : " + subject);
 };
 const sendReply = () => {
   const r = document.getElementById("replyText");
