@@ -746,10 +746,23 @@
   // ---------- Lecture : horloge du son = image et son parfaitement calés ----------
   let nodes = [], playT0 = 0, ac0 = 0;
   function resetPlayers() { closeFeeds(); lastMain = null; }
-  function scheduleAudio(from, when) {
-    const ac = audioCtx();
-    const add = (buf, startTl, bufIn, bufOut, rate, vol) => {
-      if (!buf || !vol) return;
+  let session = 0;   // chaque lecture a son numéro : un son ne peut jamais être lancé deux fois
+  function scheduleAudio(from, when, only = null) {
+    const ac = audioCtx(), my = session, waiting = new Set();
+    const add = (ref, startTl, bufIn, bufOut, rate, vol) => {
+      if (!vol || (only && ref !== only)) return;
+      const buf = ref._abReady;
+      if (!buf) {   // son pas encore prêt : il rejoindra la lecture dès qu'il l'est
+        if (ref._abReady === undefined && !only && !waiting.has(ref)) {
+          waiting.add(ref);
+          decodeAudio(ref).then(() => {
+            if (!playing || session !== my || !ref._abReady) return;
+            const w = ac.currentTime + 0.03;
+            scheduleAudio(playT0 + (w - ac0), w, ref);
+          });
+        }
+        return;
+      }
       const tlLen = (bufOut - bufIn) / rate;
       if (startTl + tlLen <= from) return;
       const skip = Math.max(0, from - startTl);
@@ -761,11 +774,11 @@
     };
     let at = 0;
     clips.forEach(c => {
-      if (!clipMute && !voiceRec && sp(c) <= 2) add(c.ref._abReady, at, c.in, c.out, sp(c), c.vol);
+      if (!clipMute && !voiceRec && sp(c) <= 2) add(c.ref, at, c.in, c.out, sp(c), c.vol);
       at += len(c);
     });
-    overlays.forEach(o => { if (!o.ref.image && !voiceRec) add(o.ref._abReady, o.start, o.in, o.out, sp(o), o.vol); });
-    audios.forEach(a => add(a.ref._abReady, a.start, a.in, a.out, 1, a.vol));
+    overlays.forEach(o => { if (!o.ref.image && !voiceRec) add(o.ref, o.start, o.in, o.out, sp(o), o.vol); });
+    audios.forEach(a => add(a.ref, a.start, a.in, a.out, 1, a.vol));
   }
   function stopAudio() { nodes.forEach(n => { try { n.stop(); } catch (e) {} }); nodes = []; }
   function setScroll(time) {
@@ -780,19 +793,14 @@
     renderStill(t);
     refreshAt();
   }
-  async function play() {
-    if (!clips.length || playing) return;
-    const need = [...clips, ...overlays, ...audios].filter(x => x.ref && !x.ref.image && x.ref._abReady === undefined);
-    if (need.length) {
-      audioCtx().resume();
-      toast("Préparation du son…", 1500);
-      await Promise.all(need.map(x => decodeAudio(x.ref)));
-      need.forEach(x => { if (x.ref._abReady === undefined) x.ref._abReady = null; });
-    }
+  function play() {
+    if (!clips.length || playing) return;   // déjà en lecture : on ne relance rien
     if (t >= total() - 0.05) t = 0;
     const ac = audioCtx();
     ac.resume();
     playing = true;
+    session++;
+    stopAudio();
     $("edPlay").innerHTML = ic("pause", 30);
     closeFeeds();
     const when = ac.currentTime + 0.12;   // petite avance : les premières images se décodent
@@ -804,6 +812,7 @@
   function pause() {
     if (!playing) return;
     playing = false;
+    session++;
     $("edPlay").innerHTML = ic("play", 30);
     stopAudio();
     closeFeeds();
