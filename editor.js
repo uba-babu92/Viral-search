@@ -6,7 +6,6 @@
 (() => {
   const PPS = 60;                                    // pixels par seconde
   const RULER_H = 20, VIDEO_Y = 24, VIDEO_H = 56, ROW_H = 30;
-  const SPEEDS = [0.5, 0.75, 1, 1.5, 2, 3, 5, 10, 20, 50, 100];
   const CAP_RATIO = 0.045;                           // taille du texte des légendes / hauteur de la vidéo
   const $ = id => document.getElementById(id);
 
@@ -33,6 +32,7 @@
     cam: '<path d="m16 13 5 3V8l-5 3"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     kf: '<path d="M12 3 21 12 12 21 3 12z"/>',
+    ai: '<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
     adjust: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
   };
   const ic = (n, s = 22) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
@@ -112,6 +112,7 @@
   #edKf:disabled { color: #444; }
   .etx { position: absolute; transform: translate(-50%, -50%); color: transparent; font-weight: 800; white-space: pre; text-align: center; line-height: 1.1; z-index: 3; touch-action: none; padding: 4px 8px; border-radius: 6px; }
   .etx.sel, .eov.sel { outline: 2px solid #fff; }
+  #ed .etools button.aibtn { color: #FF5A4E; }
   #edToast { position: absolute; top: 35%; left: 20px; right: 20px; text-align: center; background: #000c; color: #fff; padding: 12px; border-radius: 10px; z-index: 9; pointer-events: none; }
   </style>`);
 
@@ -369,7 +370,7 @@
     const b = (t, icon, label, cls = "") => `<button data-t="${t}" class="${cls}">${ic(icon)}<span>${label}</span></button>`;
     const back = `<button data-t="back" class="back">${ic("back")}</button>`;
     let html;
-    if (!sel) html = b("edit", "scissors", "Modifier") + b("sound", "note", "Son")
+    if (!sel) html = b("ai", "ai", "IA", "aibtn") + b("edit", "scissors", "Modifier") + b("sound", "note", "Son")
       + b("voice", "mic", voiceRec ? "Parle…" : "Voix off", voiceRec ? "rec" : "") + b("captions", "captions", "Légendes") + b("addtext", "text", "Texte") + b("overlay", "overlay", "Superposition")
       + b("camera", "cam", camRec ? "Filme…" : "Caméra", camRec ? "rec" : "");
     else if (sel.type === "v") html = back + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("speed", "speed", "Vitesse") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
@@ -1029,6 +1030,7 @@
     } else if (name === "delcaps") { save(); caps = []; sel = null; }
     else if (name === "speed") return speedSheet();
     else if (name === "adjust") return adjustSheet();
+    else if (name === "ai") return assistSheet();
     else if (name === "addtext") return textAddSheet();
     else if (name === "edittext") return textAddSheet(sel.i);
     else if (name === "volume") return volumeSheet();
@@ -1083,19 +1085,21 @@
   }
 
   // ----- Vitesse (x0,5 à x100) -----
+  // Curseur continu, réparti en logarithme : autant de place de 0,5 à 5 que de 5 à 100
+  const toSpeed = v => { const x = 0.5 * Math.pow(200, v / 1000); return Math.abs(x - 1) < 0.04 ? 1 : x < 10 ? +x.toFixed(2) : Math.round(x); };
+  const fromSpeed = x => Math.round(1000 * Math.log(x / 0.5) / Math.log(200));
   function speedSheet() {
     const c = clips[sel.i];
     save();
-    const idx = Math.max(0, SPEEDS.findIndex(s => s >= sp(c)));
     sheet(`<b>Vitesse</b><div class="ebig" id="edSpVal">x${sp(c)}</div>
-      <input type="range" id="edSp" min="0" max="${SPEEDS.length - 1}" step="1" value="${idx}">
-      <div class="estops">${SPEEDS.map(s => `<span>${s}</span>`).join("")}</div>
+      <input type="range" id="edSp" min="0" max="1000" step="1" value="${fromSpeed(sp(c))}">
+      <div class="estops" style="position:relative;height:14px">${[0.5, 1, 2, 5, 20, 100].map(v => `<span style="position:absolute;left:${fromSpeed(v) / 10}%;transform:translateX(-${fromSpeed(v) / 10}%)">${v}</span>`).join("")}</div>
       <div class="small" id="edSpInfo"></div>`);
     const upd = () => {
-      c.speed = SPEEDS[+$("edSp").value];
+      c.speed = toSpeed(+$("edSp").value);
       $("edSpVal").textContent = "x" + c.speed;
       $("edSpInfo").textContent = `Durée du plan : ${len(c).toFixed(1)} s` + (c.speed > 2 ? " · son coupé (accéléré)" : "");
-      resetPlayers(); draw(); seek(Math.min(t, total()));
+      resetPlayers(); draw(); renderStill(Math.min(t, total())); showTime();
     };
     $("edSp").oninput = upd;
     upd();
@@ -1387,6 +1391,116 @@
   }
   function closeSheet() { $("edSheet").classList.add("hidden"); }
   $("edSheetClose").onclick = () => { closeSheet(); draw(); };
+
+  // ---------- Assistant IA dans l'éditeur : tu demandes, il modifie le montage ----------
+  async function assistSheet(last = "") {
+    pause();
+    sheet(`<b>Demande à l'IA</b>
+      <div class="small" style="color:#999">Ex : « zoom sur moi au début », « coupe la 2e phrase », « légendes karaoké en bas », « ajoute le texte PROMO -50% en haut au début », « accélère le dernier plan ».</div>
+      ${last}
+      <textarea id="asTxt" placeholder="Ta demande" style="min-height:70px;background:#2a2a2a;color:#fff"></textarea>
+      <button class="main" id="asGo">Envoyer</button>`);
+    $("asGo").onclick = () => { const q = $("asTxt").value.trim(); if (q) runAssist(q); };
+  }
+  async function runAssist(q) {
+    sheet(`<div style="font-size:15px;color:#ddd"><span class="espin"></span> L'IA modifie ton montage…</div><div class="small" style="color:#999">« ${esc(q)} »</div>`, false);
+    // État du montage, avec des repères simples (P = plans, L = légendes, T = textes, S = superpositions, A = sons)
+    const ids = new Map(), r2 = x => +x.toFixed(2);
+    const said = (a, b) => caps.filter(c => c.start < b && c.start + len(c) > a).map(c => c.text).join(" ");
+    const state = {
+      duree: r2(total()), barre_blanche: r2(t),
+      plans: clips.map((c, i) => { ids.set("P" + (i + 1), c); const s = startOf(i); return { id: "P" + (i + 1), debut: r2(s), fin: r2(s + len(c)), vitesse: sp(c), volume: c.vol, dit: said(s, s + len(c)) }; }),
+      legendes: caps.map((c, i) => { ids.set("L" + (i + 1), c); return { id: "L" + (i + 1), debut: r2(c.start), fin: r2(c.start + len(c)), texte: c.text }; }),
+      style_legendes: capStyle.style,
+      textes: texts.map((x, i) => { ids.set("T" + (i + 1), x); return { id: "T" + (i + 1), debut: r2(x.start), fin: r2(x.start + len(x)), texte: x.text }; }),
+      superpositions: overlays.map((o, i) => { ids.set("S" + (i + 1), o); return { id: "S" + (i + 1), debut: r2(o.start), fin: r2(o.start + len(o)) }; }),
+      sons: audios.map((a, i) => { ids.set("A" + (i + 1), a); return { id: "A" + (i + 1), type: a.kind, nom: a.ref.label, debut: r2(a.start), fin: r2(a.start + len(a)) }; }),
+    };
+    const lib = await libList().catch(() => []);
+    const sys = `Tu es l'assistant d'un éditeur vidéo façon CapCut. On te donne l'état du montage (temps en secondes) et une demande. Réponds UNIQUEMENT en JSON :
+{"actions":[...],"reponse":"1 phrase en français qui dit ce que tu as fait"}
+Actions possibles (n'utilise que les id fournis) :
+{"do":"supprimer","id":"P2"} (plan, légende, texte, superposition ou son)
+{"do":"couper","id":"P1","a":3.2} (coupe un plan en deux au temps a)
+{"do":"raccourcir","id":"P1","debut":0.5,"fin":0.3} (secondes retirées au début / à la fin d'un plan)
+{"do":"vitesse","id":"P1","valeur":2} (0.5 à 100)
+{"do":"volume","id":"P1","valeur":1.2} (0 à 2)
+{"do":"deplacer_plan","id":"P3","position":1} (nouvelle place, 1 = premier)
+{"do":"zoom","id":"P1","de":1,"a":1.6,"debut":0,"fin":1.5,"cadrage_x":0,"cadrage_y":-0.1} (zoom animé ; cadrage en fraction de l'image, négatif = gauche/haut ; marche aussi sur T et S pour la taille)
+{"do":"ajouter_texte","texte":"...","debut":0,"fin":3,"position":"haut|milieu|bas"}
+{"do":"modifier_texte","id":"T1","texte":"..."} ou {"do":"modifier_texte","id":"L3","texte":"..."}
+{"do":"style_legendes","style":"box|karaoke|pop|classic","position":"haut|milieu|bas","taille":1}
+{"do":"bruitage","nom":"nom exact","a":2.5} (bruitages disponibles : ${lib.length ? lib.map(s => s.name).join(", ") : "aucun"})
+{"do":"son_des_plans","coupe":true}
+Si la demande est impossible, renvoie "actions":[] et explique dans "reponse".`;
+    let plan;
+    try {
+      const ans = await askModel([{ role: "system", content: sys }, { role: "user", content: `État : ${JSON.stringify(state)}\n\nDemande : ${q}` }]);
+      plan = JSON.parse(ans.slice(ans.indexOf("{"), ans.lastIndexOf("}") + 1));
+    } catch (e) {
+      return assistSheet(`<div style="color:#FF5A4E;font-size:13px">L'IA n'a pas pu répondre : ${esc(String(e.message).slice(0, 120))}</div>`);
+    }
+    save();
+    let done = 0;
+    const kindOf = id => ({ P: "v", L: "c", T: "t", S: "o", A: "a" }[String(id)[0]]);
+    const listOf = k => (k === "v" ? clips : arr(k));
+    for (const a of plan.actions || []) {
+      try {
+        const obj = ids.get(String(a.id || "").trim()), k = kindOf(a.id), list = k && listOf(k), i = obj ? list.indexOf(obj) : -1;
+        switch (a.do) {
+          case "supprimer": if (i >= 0) { list.splice(i, 1); done++; } break;
+          case "couper": if (k === "v" && i >= 0) {
+            const s0 = startOf(i), off = +a.a - s0;
+            if (off > 0.1 && off < len(obj) - 0.1) { const cut = obj.in + off * sp(obj); clips.splice(i, 1, { ...obj, out: cut, kf: [] }, { ...obj, in: cut, kf: [] }); done++; }
+          } break;
+          case "raccourcir": if (k === "v" && i >= 0) {
+            const d0 = Math.max(0, +a.debut || 0) * sp(obj), d1 = Math.max(0, +a.fin || 0) * sp(obj);
+            if (obj.out - obj.in - d0 - d1 > 0.2) { obj.in += d0; obj.out -= d1; done++; }
+          } break;
+          case "vitesse": if (k === "v" && i >= 0) { obj.speed = Math.min(100, Math.max(0.5, +a.valeur || 1)); done++; } break;
+          case "volume": if (obj && "vol" in obj) { obj.vol = Math.min(2, Math.max(0, +a.valeur)); done++; } break;
+          case "deplacer_plan": if (k === "v" && i >= 0) { const to = Math.max(0, Math.min(clips.length - 1, (+a.position || 1) - 1)); clips.splice(to, 0, clips.splice(i, 1)[0]); done++; } break;
+          case "zoom": if (obj && PROPS[k]) {
+            const s0 = k === "v" ? startOf(i) : obj.start, L = len(obj);
+            const t0 = Math.max(0, Math.min(L, (+a.debut || s0) - s0)), t1 = Math.max(t0 + 0.1, Math.min(L, (a.fin !== undefined ? +a.fin : s0 + L) - s0));
+            const base = valAt(k, obj, t0);
+            const from = +a.de || base.scale, to = +a.a || 1.5;
+            const ex = a.cadrage_x !== undefined ? +a.cadrage_x : (k === "v" ? 0 : base.x), ey = a.cadrage_y !== undefined ? +a.cadrage_y : (k === "v" ? 0 : base.y);
+            // le point visé (cadrage) reste en place pendant le zoom
+            obj.kf = (obj.kf || []).filter(x => x.t < t0 - 0.01 || x.t > t1 + 0.01);
+            obj.kf.push({ t: +t0.toFixed(3), v: { ...base, scale: from } }, { t: +t1.toFixed(3), v: { ...base, scale: to, ...(k === "v" ? { x: -ex * (to - 1), y: -ey * (to - 1) } : {}) } });
+            obj.kf.sort((p, q) => p.t - q.t);
+            done++;
+          } break;
+          case "ajouter_texte": {
+            const st = Math.max(0, Math.min(total() - 0.3, +a.debut || 0)), en = Math.min(total(), Math.max(st + 0.3, +a.fin || st + 3));
+            texts.push({ text: String(a.texte || "Texte"), start: st, in: 0, out: en - st, x: 0.5, y: /haut/i.test(a.position) ? 0.18 : /bas/i.test(a.position) ? 0.8 : 0.45, scale: 1, rot: 0, op: 1, kf: [] });
+            done++;
+          } break;
+          case "modifier_texte": if (obj && "text" in obj) { obj.text = String(a.texte || obj.text); if (k === "c") obj.words = null; done++; } break;
+          case "style_legendes":
+            if (CAP_STYLES.some(s => s[0] === a.style)) capStyle.style = a.style;
+            if (a.position) capStyle.y = /haut/i.test(a.position) ? 0.2 : /milieu|centre/i.test(a.position) ? 0.5 : 0.75;
+            if (+a.taille) capStyle.size = Math.min(1.8, Math.max(0.6, +a.taille));
+            done++; break;
+          case "bruitage": {
+            const s = lib.find(x => x.name.toLowerCase() === String(a.nom || "").toLowerCase()) || lib.find(x => x.name.toLowerCase().includes(String(a.nom || "").toLowerCase()));
+            if (!s) break;
+            const ref = libRefs.get(s.id) || { lib: s.id, file: new File([s.blob], s.name + ".audio", { type: s.type || s.blob.type }), url: URL.createObjectURL(s.blob), label: s.name };
+            libRefs.set(s.id, ref);
+            if (!refs.includes(ref)) refs.push(ref);
+            const d = await mediaDuration(ref);
+            audios.push({ ref, kind: "sfx", start: Math.max(0, +a.a || t), in: 0, out: d, vol: 1 });
+            done++;
+          } break;
+          case "son_des_plans": clipMute = !!a.coupe; done++; break;
+        }
+      } catch (e) { /* action ignorée */ }
+    }
+    sel = null; resetPlayers(); draw(); seek(Math.min(t, total()));
+    const msg = `<div style="background:#2a2a2a;border-radius:14px;padding:10px 12px;font-size:14px">${esc(plan.reponse || "C'est fait.")}<div class="small" style="color:#999;margin:4px 0 0">${done} modification(s) · ↶ pour annuler</div></div>`;
+    assistSheet(msg);
+  }
 
   // ---------- Montage IA : écoute, coupe des blancs, légendes ----------
   const AI_GAP = 0.35, AI_PAD_IN = 0.12, AI_PAD_OUT = 0.18;   // réglages de coupe (secondes)
