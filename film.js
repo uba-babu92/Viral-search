@@ -16,7 +16,7 @@
   async function start(constraints) {
     stop();
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },   // son naturel, pas « appel »
       // Pas de format imposé : sinon l'iPhone recadre (effet zoom). Il tourne l'image tout seul.
       video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 }, ...constraints },
     });

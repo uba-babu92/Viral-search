@@ -69,6 +69,7 @@
   .eclip span, .eit span { position: absolute; left: 5px; bottom: 2px; font-size: 10px; color: #fff; text-shadow: 0 1px 2px #000; white-space: nowrap; overflow: hidden; max-width: calc(100% - 8px); }
   .eclip em { position: absolute; right: 4px; top: 2px; font-size: 10px; font-style: normal; background: #000a; color: #fff; padding: 0 4px; border-radius: 3px; }
   .eclip.sel, .eit.sel { border-color: #fff; }
+  .eit.sel { touch-action: none; }   /* sélectionné : on le glisse directement */
   .eclip.drag, .eit.drag { transition: none; z-index: 5; opacity: .85; transform: scale(1.04); box-shadow: 0 6px 18px #000; }
   .ehandle { position: absolute; top: -2px; bottom: -2px; width: 14px; background: #fff; touch-action: none; display: flex; align-items: center; justify-content: center; color: #000; font-size: 12px; font-weight: 700; z-index: 3; }
   .ehandle.l { left: -12px; border-radius: 4px 0 0 4px; } .ehandle.r { right: -12px; border-radius: 0 4px 4px 0; }
@@ -628,11 +629,17 @@
     const kind = el.dataset.k, i = +el.dataset.i;
     const handle = e.target.closest(".ehandle");
     if (handle) { e.preventDefault(); return startTrim(e, kind, i, handle.dataset.h); }
-    press = { x: e.clientX, y: e.clientY, kind, i, moved: false };
+    const picked = kind !== "v" && sel && sel.type === kind && sel.i === i;
+    press = { x: e.clientX, y: e.clientY, kind, i, moved: false, picked };
+    if (picked) e.preventDefault();
     press.timer = setTimeout(() => { if (press && !press.moved) startMove(press); }, 380);
   });
   items.addEventListener("pointermove", e => {
-    if (press && !dragging && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 8) { press.moved = true; clearTimeout(press.timer); }
+    if (press && !dragging && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 8) {
+      clearTimeout(press.timer);
+      if (press.picked) { startMove(press, true); return; }   // son/légende déjà sélectionné : on le déplace tout de suite
+      press.moved = true;
+    }
   });
   items.addEventListener("pointerup", () => {
     if (press && !press.moved && !dragging) {
@@ -657,8 +664,8 @@
     if (x > r.right - 40) tl.scrollLeft = Math.min(tl.scrollLeft + 8, total() * PPS);
   }
 
-  function startMove(p) {
-    if (navigator.vibrate) navigator.vibrate(15);
+  function startMove(p, quiet) {
+    if (navigator.vibrate && !quiet) navigator.vibrate(15);
     pause();
     save();
     dragging = p;
@@ -865,7 +872,8 @@
       fd.append("timestamp_granularities[]", "segment");
       const res = await fetch(RELAY + "/transcribe", { method: "POST", body: fd });
       const txt = await res.text();
-      if (!res.ok) { if (typeof checkCredit === "function") checkCredit("IA", res.status, txt); throw new Error(res.status === 401 ? "clé IA (Groq) manquante ou invalide dans Cloudflare" : `transcription : ${res.status} ${txt.slice(0, 120)}`); }
+      if (!res.ok) { if (typeof checkCredit === "function") checkCredit("IA", res.status, txt); let why = txt; try { why = JSON.parse(txt).error.message || txt; } catch (e) {}
+        throw new Error(`Groq a refusé (${res.status}) : ${String(why).slice(0, 160)}` + (res.status === 401 ? " → la clé dans AI_KEY n'est pas acceptée" : "")); }
       const data = JSON.parse(txt);
       const segs = data.segments && data.segments.length ? data.segments : [{ text: data.text || "", start: 0, end: total() }];
       save();
@@ -980,12 +988,13 @@
     if (voiceRec || voiceWanted) return;
     voiceWanted = true;
     pause();
-    try { voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    // Son « studio » : sans le traitement « appel téléphonique » (anti-écho, réduction de bruit, gain auto)
+    try { voiceStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1, sampleRate: 48000 } }); }
     catch (e) { voiceWanted = false; return toast("Micro refusé : autorise-le dans les réglages Safari"); }
     if (!voiceWanted) { voiceStream.getTracks().forEach(tr => tr.stop()); return; } // relâché trop vite
     const mime = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find(m => MediaRecorder.isTypeSupported(m)) || "";
     voiceChunks = [];
-    voiceRec = new MediaRecorder(voiceStream, mime ? { mimeType: mime } : undefined);
+    voiceRec = new MediaRecorder(voiceStream, { ...(mime ? { mimeType: mime } : {}), audioBitsPerSecond: 192e3 });
     voiceRec.ondataavailable = e => e.data.size && voiceChunks.push(e.data);
     voiceRec.onstop = async () => {
       voiceStream.getTracks().forEach(tr => tr.stop());
