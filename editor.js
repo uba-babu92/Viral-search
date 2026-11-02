@@ -260,7 +260,7 @@
 
   // ---------- Images clés (comme CapCut) ----------
   // Chaque élément animable a des valeurs de base et, s'il en a, des clés {t (secondes depuis son début), v:{...}}.
-  const PROPS = { v: ["x", "y", "scale", "rot"], o: ["x", "y", "scale", "rot", "op"], t: ["x", "y", "scale", "rot", "op"] };
+  const PROPS = { v: ["x", "y", "scale", "rot"], o: ["x", "y", "scale", "rot", "op"], t: ["x", "y", "scale", "rot", "op"], f: ["x", "y", "scale", "rot", "op"] };
   const DEF = { x: 0, y: 0, scale: 1, rot: 0, op: 1 };
   const easeIO = u => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
   const itemOf = (k, i) => (k === "v" ? clips[i] : arr(k)[i]);
@@ -353,7 +353,7 @@
     });
     if (overlays.length) overlays.forEach((o, i) => html += itemHtml("o", o, i, ovY + ovL[i] * ROW_H, "ov", "Superposition", o.ref.thumb ? `background-image:url(${o.ref.thumb});` : ""));
     else html += `<div class="eph" data-ph="ov" style="left:${h}px;top:${ovY}px;width:${w}px">+ Ajouter une superposition</div>`;
-    if (effects.length) effects.forEach((x, i) => html += itemHtml("f", x, i, fxY + fxL[i] * ROW_H, "fx", "✦ " + (FX[x.type] ? FX[x.type].label : x.type)));
+    if (effects.length) effects.forEach((x, i) => html += itemHtml("f", x, i, fxY + fxL[i] * ROW_H, "fx", "✦ " + (x.type === "gen" ? x.name || "Claude" : FX[x.type] ? FX[x.type].label : x.type)));
     else html += `<div class="eph" data-ph="fx" style="left:${h}px;top:${fxY}px;width:${w}px">+ Ajouter un effet</div>`;
     if (texts.length) texts.forEach((x, i) => html += itemHtml("t", x, i, txY + txL[i] * ROW_H, "txt", "T  " + esc(x.text)));
     else html += `<div class="eph" data-ph="txt" style="left:${h}px;top:${txY}px;width:${w}px">+ Ajouter un texte</div>`;
@@ -388,6 +388,7 @@
     else if (sel.type === "v") html = back + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("speed", "speed", "Vitesse") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "a") html = back + b("split", "split", "Diviser") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "o") html = back + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
+    else if (sel.type === "f" && effects[sel.i].type === "gen") html = back + b("genedit", "ai", "Modifier (IA)") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "f") html = back + (FX[effects[sel.i].type] && FX[effects[sel.i].type].pos ? b("anchor", "adjust", effects[sel.i].anchor === "face" ? "Sur le visage" : "Au centre") : "") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "t") html = back + b("edittext", "text", "Modifier") + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else html = back + b("style", "captions", "Style") + b("text", "text", "Modifier le texte") + b("del", "trash", "Supprimer") + b("delcaps", "trash", "Tout supprimer");
@@ -459,6 +460,7 @@
     if (tb) { k = "t"; i = [...txEls.values()].find(v => v.box === tb).i; }
     else if (ob && !e.target.closest(".ox") && !e.target.closest(".orz")) { k = "o"; i = [...ovEls.values()].find(v => v.box === ob).i; }
     else if (gest && touches.size === 2) k = gest.k, i = gest.i;
+    else if (e.target === view && sel && sel.type === "f" && effects[sel.i] && effects[sel.i].type === "gen") { k = "f"; i = sel.i; }   // bloc Claude : on le déplace
     else if (e.target === view && sel && sel.type === "v") { k = "v"; i = sel.i; }
     if (!k) return;
     e.preventDefault();
@@ -484,7 +486,7 @@
       ch.rot = gest.v0.rot + (a - gest.a0) * 180 / Math.PI;
       gest.moved = true;
     }
-    if (gest.k !== "v") { ch.x = Math.min(1.2, Math.max(-0.2, ch.x)); ch.y = Math.min(1.2, Math.max(-0.2, ch.y)); }
+    if (gest.k === "o" || gest.k === "t") { ch.x = Math.min(1.2, Math.max(-0.2, ch.x)); ch.y = Math.min(1.2, Math.max(-0.2, ch.y)); }
     setProps(gest.k, gest.i, ch);
     drawOverlays(); renderStill(t);
   });
@@ -797,6 +799,7 @@
   }
   function drawFx(g, W, H, time, layer, mt) {
     activeFx(time).forEach(e => {
+      if (e.type === "gen") { if (layer === "mid") drawGen(g, W, H, time, e, mt); return; }
       const age = time - e.start, d = len(e), u = age / d, sd = e.seed || 1;
       const fadeIn = easeOut(age / 0.2), fadeOut = Math.min(1, (d - age) / 0.3), A = Math.max(0, Math.min(fadeIn, fadeOut));
       if (layer === "top") {
@@ -892,6 +895,141 @@
       sel = { type: "f", i: effects.length - 1 };
       closeSheet(); draw(); renderStill(t);
     });
+  }
+
+
+  // ---------- Blocs Claude : animations écrites sur mesure (code Canvas), déplaçables, modifiables par l'IA ----------
+  const GW = 1080, GH = 1920;
+  const backE = x => { x = Math.min(1, Math.max(0, x)) - 1; return 1 + 2.70158 * x * x * x + 1.70158 * x * x; };
+  const clampN = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+  const genCache = new Map();
+  function genFn(code) {
+    if (!genCache.has(code)) {
+      let f = null;
+      try { f = new Function("ctx", "p", '"use strict";\n' + code); } catch (err) { console.warn("Bloc Claude invalide", err); }
+      genCache.set(code, f);
+    }
+    return genCache.get(code);
+  }
+  // Mots prononcés entre a et b (temps relatifs à a), d'après les légendes
+  function wordsIn(a, b) {
+    const out = [];
+    caps.forEach(c => { if (c.start < b && c.start + len(c) > a) capWords(c).forEach(w => { if (w.s < b && w.e > a) out.push({ w: w.w, s: +(w.s - a).toFixed(3), e: +(w.e - a).toFixed(3) }); }); });
+    return out;
+  }
+  function drawGen(g, W, H, time, e, mt) {
+    const f = genFn(e.code || "");
+    if (!f) return;
+    const local = time - e.start, v = valAt("f", e, local), k = W / GW;
+    const tt = local + (e.in || 0), d = e.full || len(e), t0 = e.start - (e.in || 0);
+    const face = faceOnScreen(time, W, H, mt);
+    const p = { t: tt, d, u: clampN(tt / d), W: GW, H: GH, face: face ? { x: face.x / k, y: face.y / k, w: face.w / k, h: face.h / k } : null,
+      words: wordsIn(t0, t0 + d), rand: n => rnd(e.seed || 1, n), ease: easeOut, easeIO, back: backE, clamp: clampN, lerp: (a, b, x) => a + (b - a) * x };
+    g.save();
+    g.scale(k, k);
+    g.translate(GW / 2 + v.x * GW, GH / 2 + v.y * GH); g.rotate(v.rot * Math.PI / 180); g.scale(v.scale, v.scale); g.translate(-GW / 2, -GH / 2);
+    g.globalAlpha = v.op;
+    try { f(g, p); } catch (err) { if (!genCache.has("err:" + e.code)) { genCache.set("err:" + e.code, 1); console.warn("Bloc Claude", err); } }
+    g.restore();
+  }
+  // Lit les blocs dans la réponse de Claude
+  function parseBlocs(txt) {
+    const out = [], re = /<bloc\b([^>]*)>([\s\S]*?)<\/bloc>/g;
+    let m;
+    while ((m = re.exec(txt))) {
+      const a = {};
+      m[1].replace(/(\w+)="([^"]*)"/g, (_, k, v) => (a[k] = v));
+      const code = m[2].trim().replace(/^```[a-z]*\n?/i, "").replace(/```\s*$/, "");
+      if (genFn(code)) out.push({ name: a.nom || "Animation", at: a.at, word: a.word, debut: a.debut, dur: +a.duree || 2.5, code });
+    }
+    return out;
+  }
+  function addGen(b, start) {
+    const st = Math.max(0, Math.min(Math.max(0, total() - 0.3), start));
+    const d = Math.max(0.3, Math.min(b.dur, 15, total() - st));
+    const e = { type: "gen", name: String(b.name).slice(0, 40), code: b.code, start: +st.toFixed(3), in: 0, out: +d.toFixed(3), full: +b.dur.toFixed(3),
+      seed: Math.round(Math.random() * 1000) + 1, x: 0, y: 0, scale: 1, rot: 0, op: 1, kf: [] };
+    effects.push(e);
+    if (/p\.face/.test(b.code)) clips.forEach(c => ensureFaces(c.ref));
+    return e;
+  }
+  const GEN_RULES = `Tu es un motion designer de très haut niveau (niveau After Effects, gros créateurs TikTok). Tu crées des animations sur mesure, dessinées en JavaScript Canvas 2D, qui se superposent à une vidéo verticale. Sois créatif et ambitieux : typographie cinétique, chiffres qui défilent, listes qui se construisent, soulignements et surlignages, formes géométriques, cadres, compteurs, barres de progression, éléments graphiques qui réagissent au visage, transitions… Chaque animation doit servir le message et avoir l'air pro.
+Chaque animation est un BLOC : le corps d'une fonction (ctx, p) appelée à chaque image (30 images/s), en temps réel sur iPhone.
+- ctx : contexte Canvas 2D, repère 1080 x 1920 (déjà mis à l'échelle). La vidéo est déjà dessinée dessous : ne remplis pas tout l'écran, sauf pour une transition voulue et très courte.
+- p.t : secondes depuis le début du bloc ; p.d : durée du bloc ; p.u : avancement de 0 à 1 ; p.W = 1080 ; p.H = 1920.
+- p.face : visage {x, y, w, h} (centre et taille en pixels) ou null. Prévois toujours le cas null (place-toi alors vers x 540, y 700).
+- p.words : mots prononcés pendant le bloc [{w, s, e}] (secondes depuis le début du bloc). Idéal pour caler le texte sur la voix.
+- Outils : p.rand(n) (hasard fixe entre 0 et 1, jamais Math.random), p.ease(x) (sortie douce), p.easeIO(x), p.back(x) (dépassement élastique), p.clamp(x, a, b), p.lerp(a, b, x).
+Règles techniques :
+- Tout dépend seulement de p.t : aucune variable gardée entre deux images, pas de setTimeout, pas de DOM, pas de fetch, pas d'image ni de police à charger.
+- N'utilise jamais ctx.setTransform, ctx.resetTransform ni ctx.filter (pas pris en charge sur iPhone). save / restore toujours équilibrés.
+- Polices : "Inter" (graisses 400 à 900) ou "system-ui". Textes courts, très lisibles (contour, ombre ou fond).
+- Zone sûre : rien d'important dans les 300 px du bas ni dans les 160 px de droite (boutons TikTok). Les légendes sont vers y = 1440 : évite cette bande.
+- Léger : moins de 400 formes par image, shadowBlur avec parcimonie.
+- Entrée et sortie animées (jamais d'apparition sèche), tout est fini proprement à p.d.
+- Pas d'emoji, sauf si on te le demande. Couleurs de la marque si rien n'est dit : corail #FF5A4E, beige #F3EEE6, blanc, noir #141414, plus une couleur d'accent si besoin.
+Format d'un bloc (le code entre les balises, sans balises markdown) :
+<bloc nom="Titre court" ATTRIBUTS duree="2.5">
+code JavaScript
+</bloc>`;
+  // Fenêtre « Modifier (IA) » d'un bloc Claude
+  function genSheet(last = "") {
+    pause();
+    const i = sel.i, e = effects[i];
+    sheet(`<b>${esc(e.name)}</b>
+      <div class="small" style="color:#999">Animation créée par Claude. Sur l'aperçu : un doigt pour la déplacer, deux doigts pour l'agrandir ou la tourner. Pour changer ce qu'elle montre, demande ici.</div>
+      ${last}
+      <textarea id="gnTxt" placeholder="Ex : plus gros, en jaune, plus rapide, ajoute un soulignement" style="min-height:70px;background:#2a2a2a;color:#fff"></textarea>
+      <button class="main" id="gnGo">Modifier avec Claude</button>`);
+    $("gnGo").onclick = async () => {
+      const q = $("gnTxt").value.trim();
+      if (!q) return;
+      sheet(`<div style="font-size:15px;color:#ddd"><span class="espin"></span> Claude modifie l'animation…</div><div class="small" style="color:#999">« ${esc(q)} »</div>`, false);
+      try {
+        const d = e.full || len(e);
+        const ans = await askClaude(GEN_RULES.replace("ATTRIBUTS ", ""), `Voici un bloc existant (durée ${d.toFixed(2)} s) :
+<bloc nom="${e.name}" duree="${d.toFixed(2)}">
+${e.code}
+</bloc>
+Mots prononcés pendant le bloc : ${JSON.stringify(wordsIn(e.start - (e.in || 0), e.start - (e.in || 0) + d))}
+
+Demande : ${q}
+Renvoie UN seul bloc complet, modifié selon la demande (garde le reste tel quel si la demande est petite).`);
+        const b = parseBlocs(ans)[0];
+        if (!b) throw new Error("réponse illisible");
+        save();
+        e.code = b.code; e.name = String(b.name).slice(0, 40);
+        if (Math.abs(b.dur - d) > 0.05) { e.full = +b.dur.toFixed(3); e.out = +Math.min(b.dur, Math.max(0.3, total() - e.start + (e.in || 0))).toFixed(3); }
+        if (/p\.face/.test(b.code)) clips.forEach(c => ensureFaces(c.ref));
+        draw(); renderStill(t);
+        genSheet(`<div style="background:#2a2a2a;border-radius:14px;padding:10px 12px;font-size:14px">C'est fait.<div class="small" style="color:#999;margin:4px 0 0">↶ pour annuler</div></div>`);
+      } catch (err) {
+        genSheet(`<div style="color:#FF5A4E;font-size:13px">Claude n'a pas pu répondre : ${esc(String(err.message).slice(0, 140))}</div>`);
+      }
+    };
+  }
+  // Créer une ou plusieurs animations avec Claude, depuis l'assistant
+  async function runGen(q) {
+    sheet(`<div style="font-size:15px;color:#ddd"><span class="espin"></span> Claude crée ton animation…</div><div class="small" style="color:#999">« ${esc(q)} »</div>`, false);
+    try {
+      const said = caps.map(c => `[${c.start.toFixed(1)}-${(c.start + len(c)).toFixed(1)}] ${c.text}`).join("\n") || "(pas de légendes : rien de transcrit)";
+      const ans = await askClaude(GEN_RULES.replace("ATTRIBUTS", `debut="12.4"`) + `\nL'attribut debut est le moment (en secondes dans la vidéo) où le bloc commence.`,
+        `Durée de la vidéo : ${total().toFixed(1)} s. Barre blanche (là où l'utilisateur regarde) : ${t.toFixed(1)} s.
+Ce qui est dit (temps en secondes) :
+${said}
+
+Demande : ${q}
+Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche. Crée autant de blocs que la demande l'exige (souvent un seul).`);
+      const bl = parseBlocs(ans);
+      if (!bl.length) throw new Error("réponse illisible");
+      save();
+      bl.forEach(b => addGen(b, isFinite(+b.debut) && b.debut !== undefined ? +b.debut : t));
+      sel = { type: "f", i: effects.length - 1 };
+      draw(); renderStill(t);
+      assistSheet(`<div style="background:#2a2a2a;border-radius:14px;padding:10px 12px;font-size:14px">${bl.length} animation(s) ajoutée(s) : ${esc(bl.map(b => b.name).join(", "))}.<div class="small" style="color:#999;margin:4px 0 0">Ligne violette dans la ligne du temps · ↶ pour annuler</div></div>`);
+    } catch (err) {
+      assistSheet(`<div style="color:#FF5A4E;font-size:13px">Claude n'a pas pu répondre : ${esc(String(err.message).slice(0, 140))}</div>`);
+    }
   }
 
   // Dessin d'une image complète (plan + superpositions) sur un canvas
@@ -1319,6 +1457,7 @@
     else if (name === "adjust") return adjustSheet();
     else if (name === "ai") return assistSheet();
     else if (name === "fx") return fxSheet();
+    else if (name === "genedit") return genSheet();
     else if (name === "anchor" && sel && sel.type === "f") { save(); const e = effects[sel.i]; e.anchor = e.anchor === "face" ? "center" : "face"; if (e.anchor === "face") clips.forEach(c => ensureFaces(c.ref)); }
     else if (name === "addtext") return textAddSheet();
     else if (name === "edittext") return textAddSheet(sel.i);
@@ -1695,8 +1834,10 @@
       <div class="small" style="color:#999">Ex : « zoom sur moi au début », « coupe la 2e phrase », « légendes karaoké en bas », « ajoute le texte PROMO -50% en haut au début », « accélère le dernier plan ».</div>
       ${last}
       <textarea id="asTxt" placeholder="Ta demande" style="min-height:70px;background:#2a2a2a;color:#fff"></textarea>
-      <button class="main" id="asGo">Envoyer</button>`);
+      <button class="main" id="asGo">Modifier le montage</button>
+      <button class="main alt" id="asGen">Créer une animation avec Claude</button>`);
     $("asGo").onclick = () => { const q = $("asTxt").value.trim(); if (q) runAssist(q); };
+    $("asGen").onclick = () => { const q = $("asTxt").value.trim(); if (q) runGen(q); };
   }
   async function runAssist(q) {
     sheet(`<div style="font-size:15px;color:#ddd"><span class="espin"></span> L'IA modifie ton montage…</div><div class="small" style="color:#999">« ${esc(q)} »</div>`, false);
@@ -1863,9 +2004,44 @@ Si la demande est impossible, renvoie "actions":[] et explique dans "reponse".`;
     // 2. L'IA lit le prompt et décide
     steps[2].st = "doing"; show();
     const lib = await libList().catch(() => []);
-    let plan = null, note = "";
+    let plan = null, note = "", blocs = [];
+    const list = segs.map(s => `${s.id} (rush ${s.rush}, ${(s.out - s.in).toFixed(1)} s) : ${s.text ? "« " + s.text + " »" : "[plan sans parole]"}`).join("\n");
+    const ask = prompt || "montage TikTok très dynamique : coupe les blancs et les répétitions, zooms punch, animations de motion design sur les idées fortes, légendes style Boîte";
+    // Claude : montage + animations sur mesure
     try {
-      const list = segs.map(s => `${s.id} (rush ${s.rush}, ${(s.out - s.in).toFixed(1)} s) : ${s.text ? "« " + s.text + " »" : "[plan sans parole]"}`).join("\n");
+      steps[2].label = "Claude crée ton montage et tes animations"; show();
+      let lastShow = 0;
+      const sysC = `Tu es à la fois un monteur TikTok de haut niveau et un motion designer de génie. On te donne les morceaux d'une vidéo (dans l'ordre où ils ont été filmés) et la demande de l'utilisateur.
+ÉTAPE 1 — le montage, en JSON entre <plan> et </plan> :
+{"keep":["S1","S3"],"speed":{"S2":2},"volume":{"S1":1.2},"captions":{"on":true,"style":"box|karaoke|pop|classic","position":"haut|milieu|bas","size":1},
+"effects":[{"type":"zoom|shake|flash","at":"S3","word":"mot","duration":0.7}],
+"sfx":[{"name":"nom exact","at":"S3","where":"start|end"}],"summary":"1 ou 2 phrases en français sur ce que tu as fait"}
+- keep : garde l'ordre ; si une phrase a été dite plusieurs fois (prises ratées), garde la meilleure (souvent la dernière). Respecte une durée maximale si elle est demandée.
+- effects : "zoom" (zoom punch sur la vidéo) sur un mot fort toutes les 2 à 4 s, "shake" sur un moment choc, "flash" sur un changement d'idée. "speed"/"volume" seulement si demandé (vitesse 0.5 à 100).
+- Bruitages disponibles : ${lib.length ? lib.map(s => s.name).join(", ") : "aucun"} (n'en invente pas).
+ÉTAPE 2 — les animations : environ une toutes les 4 à 6 secondes de vidéo finale (au moins 3), chacune différente, qui illustre l'idée dite à ce moment-là (titre d'accroche au début, chiffres, mots clés, listes, appel à l'action à la fin…). Respecte le style demandé par l'utilisateur.
+Pour chaque animation, at = le morceau et word = le mot exact prononcé où elle commence.
+
+${GEN_RULES.replace("ATTRIBUTS", `at="S3" word="mot"`)}`;
+      const ans = await askClaude(sysC, `Demande : ${ask}\n\nMorceaux :\n${list}`, txt => {
+        if (Date.now() - lastShow < 700) return;
+        lastShow = Date.now();
+        const n = (txt.match(/<bloc\b/g) || []).length;
+        steps[2].info = n ? `${n} animation(s) en cours de création…` : txt.includes("</plan>") ? "Montage décidé, il dessine les animations…" : "Il étudie ce que tu dis…";
+        show();
+      });
+      const pj = ans.match(/<plan>([\s\S]*?)<\/plan>/);
+      if (!pj) throw new Error("réponse sans plan");
+      plan = JSON.parse(pj[1].slice(pj[1].indexOf("{"), pj[1].lastIndexOf("}") + 1));
+      if (!Array.isArray(plan.keep) || !plan.keep.length) throw new Error("plan vide");
+      blocs = parseBlocs(ans);
+      steps[2].st = "done"; steps[2].info = plan.summary || `${plan.keep.length} morceaux gardés sur ${segs.length}`;
+    } catch (e) {
+      plan = null; blocs = [];
+      note = "Claude indisponible (" + String(e.message).slice(0, 80) + ")";
+      steps[2].label = "L'IA décide du montage"; steps[2].info = note + " : je passe à l'IA gratuite…"; show();
+    }
+    if (!plan) try {
       const sys = `Tu es un monteur vidéo TikTok de haut niveau, spécialiste des montages très dynamiques (style gros créateurs). On te donne les morceaux d'une vidéo (dans l'ordre où ils ont été filmés) et la demande de l'utilisateur.
 1) Choix des morceaux : garde l'ordre ; si une phrase a été dite plusieurs fois (prises ratées), garde seulement la meilleure (en général la dernière). Respecte une durée maximale si elle est demandée.
 2) Rythme : sauf demande contraire, rends le montage vivant : un "zoom" punch sur un mot fort toutes les 2 à 4 secondes, une "shake" sur les moments chocs, un "flash" sur les changements d'idée.
@@ -1881,7 +2057,7 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
       const answer = await askModel([{ role: "system", content: sys }, { role: "user", content: `Demande : ${prompt || "montage TikTok très dynamique : coupe les blancs et les répétitions, zooms punch, gros textes animés sur les mots clés, effets qui illustrent ce que je dis, légendes style Boîte"}\n\nMorceaux :\n${list}` }]);
       plan = JSON.parse(answer.slice(answer.indexOf("{"), answer.lastIndexOf("}") + 1));
       if (!Array.isArray(plan.keep) || !plan.keep.length) throw new Error("plan vide");
-      steps[2].st = "done"; steps[2].info = plan.summary || `${plan.keep.length} morceaux gardés sur ${segs.length}`;
+      steps[2].st = "done"; steps[2].info = (note ? note + ". " : "") + (plan.summary || `${plan.keep.length} morceaux gardés sur ${segs.length}`);
     } catch (e) {
       plan = { keep: segs.map(s => s.id), captions: { on: true, style: "box" } };
       steps[2].st = "fail"; steps[2].info = "IA indisponible (" + String(e.message).slice(0, 80) + ") : montage simple, blancs coupés";
@@ -1947,9 +2123,15 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
         anim: ["pop", "slide", "shake"].includes(x.anim) ? x.anim : "pop", color: /^#[0-9a-f]{6}$/i.test(x.color || "") ? x.color : "#FFFFFF" });
       txDone++;
     }
+    let genDone = 0;
+    for (const b of blocs) {
+      const at = timeOf(b.at, b.word);
+      if (at === null) continue;
+      if (addGen(b, at)) genDone++;
+    }
     const gain = before - total();
     steps[3].st = "done";
-    steps[3].info = [`${kept.length} morceaux`, fxDone ? `${fxDone} effet(s)` : "", txDone ? `${txDone} gros texte(s)` : "", caps.length ? `${caps.length} légendes (${CAP_STYLES.find(s => s[0] === capStyle.style)[1]})` : "sans légendes", sfxDone ? `${sfxDone} bruitage(s)` : ""].filter(Boolean).join(" · ");
+    steps[3].info = [`${kept.length} morceaux`, genDone ? `${genDone} animation(s) Claude` : "", fxDone ? `${fxDone} effet(s)` : "", txDone ? `${txDone} gros texte(s)` : "", caps.length ? `${caps.length} légendes (${CAP_STYLES.find(s => s[0] === capStyle.style)[1]})` : "sans légendes", sfxDone ? `${sfxDone} bruitage(s)` : ""].filter(Boolean).join(" · ");
     sel = null; draw(); seek(0);
     aiSheet(steps, `<div style="margin-top:6px;font-size:15px">Ton montage est prêt : <b>${total().toFixed(1)} s</b>${gain > 0.05 ? ` (au lieu de ${before.toFixed(1)} s)` : ""}.</div>
       <button class="main" id="aiPlay">Regarder</button>
@@ -2095,7 +2277,7 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
       say("Préparation…");
       await loadMB();
       for (const x of [...clips, ...overlays, ...audios]) await media(x.ref);
-      if (effects.some(e => e.anchor === "face" && FX[e.type] && FX[e.type].pos)) { say("Analyse des visages…"); for (const c of clips) await ensureFaces(c.ref); }
+      if (effects.some(e => (e.anchor === "face" && FX[e.type] && FX[e.type].pos) || (e.type === "gen" && /p\.face/.test(e.code || "")))) { say("Analyse des visages…"); for (const c of clips) await ensureFaces(c.ref); }
       if (!(await MB.canEncodeAudio("aac"))) (await import("./vendor/mediabunny-aac-encoder.min.mjs")).registerAacEncoder();
       const out = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: "in-memory" }), target: new MB.BufferTarget() });
       const cv = document.createElement("canvas"); cv.width = EW; cv.height = EH;

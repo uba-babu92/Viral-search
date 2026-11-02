@@ -44,3 +44,9 @@
 ## Petits trucs à corriger
 - Miniatures des carrousels qui ne s'affichent pas.
 - Tester le montage de bout en bout.
+
+## Montage Claude (fait)
+- Montage IA passe par Claude (Sonnet 5.5, clé CLAUDE_KEY dans Cloudflare, route /claude du relais) : il décide du montage ET écrit des animations sur mesure (code Canvas) placées sur les mots.
+- Chaque animation = un bloc violet dans la ligne du temps : déplacer / agrandir / tourner sur l'aperçu, caler dans le temps, dupliquer, supprimer. « Modifier (IA) » pour la changer.
+- Assistant IA : bouton « Créer une animation avec Claude ».
+- Si Claude ne répond pas, l'IA gratuite (Groq) prend le relais.

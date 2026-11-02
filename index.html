@@ -514,6 +514,38 @@ async function askModel(messages) {
   }
   throw new Error(last);
 }
+// ----- Claude (Anthropic, via le relais) : réponse en direct, onText reçoit le texte au fur et à mesure -----
+async function askClaude(system, user, onText) {
+  const res = await fetch(RELAY + "/claude", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 32000, stream: true, output_config: { effort: "medium" },
+      system, messages: [{ role: "user", content: user }] }),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    checkCredit("Claude", res.status, t);
+    throw new Error(res.status === 401 ? "clé Claude refusée (vérifie CLAUDE_KEY dans Cloudflare)" : res.status === 404 ? "relais pas à jour (recopie worker.js dans Cloudflare)" : res.status + " " + t.slice(0, 150));
+  }
+  const rd = res.body.getReader(), dec = new TextDecoder();
+  let buf = "", out = "", stop = "";
+  for (;;) {
+    const { done, value } = await rd.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let k;
+    while ((k = buf.indexOf("\n\n")) >= 0) {
+      const ev = buf.slice(0, k); buf = buf.slice(k + 2);
+      const line = ev.split("\n").find(l => l.startsWith("data:"));
+      if (!line) continue;
+      let d; try { d = JSON.parse(line.slice(5)); } catch (e) { continue; }
+      if (d.type === "content_block_delta" && d.delta.type === "text_delta") { out += d.delta.text; onText && onText(out); }
+      else if (d.type === "message_delta" && d.delta.stop_reason) stop = d.delta.stop_reason;
+      else if (d.type === "error") { checkCredit("Claude", 0, JSON.stringify(d.error)); throw new Error((d.error && d.error.message) || "erreur Claude"); }
+    }
+  }
+  if (stop === "refusal") throw new Error("Claude a refusé la demande");
+  return out;
+}
 const RULES = `Règles d'un bon script de vidéo courte (TikTok, Reels) :
 - Accroche dans les 2 premières secondes : une phrase choc, une question ou une promesse.
 - Rythme rapide : phrases courtes, une idée par plan, une relance toutes les 3 à 5 secondes.
