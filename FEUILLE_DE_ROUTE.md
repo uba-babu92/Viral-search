@@ -15,6 +15,9 @@
 - Outil Texte + images clés ◇ (vidéo : zoom/cadrage/rotation ; superpositions et textes : position/taille/rotation/opacité), gestes 1 et 2 doigts, outil Ajuster.
 - Assistant IA dans l'éditeur (bouton IA) : Groq reçoit l'état du montage et renvoie des actions (couper, supprimer, vitesse, volume, zoom animé, textes, style des légendes, bruitages).
 - Vitesse : curseur continu (logarithmique) de x0,5 à x100.
+- Effets (motion design) : zoom punch, secousse, flash, feu, étincelles, confettis, pièces, cœurs, fumée, cercle, flèche ; gros textes animés (pop/glisse/tremble + couleur).
+- Suivi du visage (MediaPipe, sur le téléphone) : les effets s'accrochent à la tête, le zoom punch vise le visage.
+- L'IA (montage et assistant) place effets et gros textes selon le sens des mots.
 - Outil Caméra dans l'éditeur : appui maintenu = selfie inséré à la barre blanche, appui simple = caméra complète.
 - Adapter une vidéo virale : le relais récupère la vidéo TikTok (/tiktok-video) et Groq Whisper écoute ce qui est dit.
 - Shotstack ne sert plus pour l'export (gardé pour un futur montage IA).

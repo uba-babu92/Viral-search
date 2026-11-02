@@ -106,6 +106,7 @@
   @keyframes espin { to { transform: rotate(360deg); } }
   .ekf { position: absolute; top: 50%; width: 10px; height: 10px; margin-top: -6px; background: #fff; border: 1px solid #000; transform: rotate(45deg); z-index: 2; }
   .eit.txt { background-color: #3a3a3a; }
+  .eit.fx { background-color: #8a3ffc; }
   #edKf { border: 0; background: none; color: #ddd; display: flex; padding: 0; }
   #edKf.on { color: #FF5A4E; }
   #edKf.on svg path { fill: #FF5A4E; }
@@ -148,6 +149,7 @@
   let audios = [];     // sons : {ref, kind:"sfx"|"voice", start, in, out, vol}
   let overlays = [];   // superpositions : {ref, start, in, out, vol, x, y, scale}
   let caps = [];       // légendes : {text, start, in, out}
+  let effects = [];    // effets : {type, start, in, out, seed, anchor, ...}
   let texts = [];      // textes libres : {text, start, in, out, x, y, scale, rot, op, kf}
   let capStyle = { x: 0.5, y: 0.7, size: 1, style: "box" };
   let clipMute = false;
@@ -163,7 +165,7 @@
   const total = () => clips.reduce((s, c) => s + len(c), 0);
   const startOf = i => clips.slice(0, i).reduce((s, c) => s + len(c), 0);
   const half = () => tl.clientWidth / 2;
-  const arr = k => (k === "a" ? audios : k === "o" ? overlays : k === "t" ? texts : caps);
+  const arr = k => (k === "a" ? audios : k === "o" ? overlays : k === "t" ? texts : k === "f" ? effects : caps);
   const fmt = s => { s = Math.max(0, s); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(Math.floor(s % 60)).padStart(2, "0"); };
   let lastTime = "";
   const showTime = () => { const h = `<b>${fmt(t)}</b> / ${fmt(total())}`; if (h !== lastTime) $("edTime").innerHTML = lastTime = h; };
@@ -193,13 +195,14 @@
   const libDel = async id => req((await store("readwrite")).delete(id));
 
   // ---------- Historique ----------
-  const snap = () => JSON.stringify({ clips, audios, overlays, caps, texts, capStyle, clipMute }, (k, v) => (k === "ref" ? refs.indexOf(v) : v));
+  const snap = () => JSON.stringify({ clips, audios, overlays, caps, texts, effects, capStyle, clipMute }, (k, v) => (k === "ref" ? refs.indexOf(v) : v));
   function save() { past.push(snap()); if (past.length > 60) past.shift(); future.length = 0; updUndo(); }
   function updUndo() { $("edUndo").disabled = !past.length; $("edRedo").disabled = !future.length; }
   function restore(str) {
     const s = JSON.parse(str, (k, v) => (k === "ref" ? refs[v] : v));
     ({ clips, audios, overlays, caps, capStyle, clipMute } = s);
     texts = s.texts || [];
+    effects = s.effects || [];
     sel = null; resetPlayers();
     draw(); seek(Math.min(t, total())); updUndo();
   }
@@ -222,7 +225,7 @@
       if (added.length) await addVideos(added);
       resetPlayers(); draw(); seek(Math.min(t, total()));
     } else {
-      refs = []; clips = []; audios = []; overlays = []; caps = []; texts = []; sel = null;
+      refs = []; clips = []; audios = []; overlays = []; caps = []; texts = []; effects = []; sel = null;
       capStyle = { x: 0.5, y: 0.7, size: 1, style: "box" }; clipMute = false;
       past.length = future.length = 0; updUndo();
       resetPlayers();
@@ -326,6 +329,7 @@
     let y = VIDEO_Y + VIDEO_H + 8;
     const ovY = y; y += Math.max(1, nl(ovL)) * ROW_H;
     const txY = y; y += Math.max(1, nl(txL)) * ROW_H;
+    const fxL = lanes(effects), fxY = y; y += Math.max(1, nl(fxL)) * ROW_H;
     const capY = y; y += ROW_H;
     const auY = y; y += (nl(auL) + 1) * ROW_H;
     inner.style.width = (tot * PPS + 2 * h) + "px";   // la ligne s'arrête à la fin du montage
@@ -349,6 +353,8 @@
     });
     if (overlays.length) overlays.forEach((o, i) => html += itemHtml("o", o, i, ovY + ovL[i] * ROW_H, "ov", "Superposition", o.ref.thumb ? `background-image:url(${o.ref.thumb});` : ""));
     else html += `<div class="eph" data-ph="ov" style="left:${h}px;top:${ovY}px;width:${w}px">+ Ajouter une superposition</div>`;
+    if (effects.length) effects.forEach((x, i) => html += itemHtml("f", x, i, fxY + fxL[i] * ROW_H, "fx", "✦ " + (FX[x.type] ? FX[x.type].label : x.type)));
+    else html += `<div class="eph" data-ph="fx" style="left:${h}px;top:${fxY}px;width:${w}px">+ Ajouter un effet</div>`;
     if (texts.length) texts.forEach((x, i) => html += itemHtml("t", x, i, txY + txL[i] * ROW_H, "txt", "T  " + esc(x.text)));
     else html += `<div class="eph" data-ph="txt" style="left:${h}px;top:${txY}px;width:${w}px">+ Ajouter un texte</div>`;
     if (caps.length) caps.forEach((c, i) => html += itemHtml("c", c, i, capY, "cap", esc(c.text)));
@@ -377,11 +383,12 @@
     const back = `<button data-t="back" class="back">${ic("back")}</button>`;
     let html;
     if (!sel) html = b("ai", "ai", "IA", "aibtn") + b("edit", "scissors", "Modifier") + b("sound", "note", "Son")
-      + b("voice", "mic", voiceRec ? "Parle…" : "Voix off", voiceRec ? "rec" : "") + b("captions", "captions", "Légendes") + b("addtext", "text", "Texte") + b("overlay", "overlay", "Superposition")
+      + b("voice", "mic", voiceRec ? "Parle…" : "Voix off", voiceRec ? "rec" : "") + b("captions", "captions", "Légendes") + b("addtext", "text", "Texte") + b("fx", "ai", "Effets") + b("overlay", "overlay", "Superposition")
       + b("camera", "cam", camRec ? "Filme…" : "Caméra", camRec ? "rec" : "");
     else if (sel.type === "v") html = back + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("speed", "speed", "Vitesse") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "a") html = back + b("split", "split", "Diviser") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "o") html = back + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
+    else if (sel.type === "f") html = back + (FX[effects[sel.i].type] && FX[effects[sel.i].type].pos ? b("anchor", "adjust", effects[sel.i].anchor === "face" ? "Sur le visage" : "Au centre") : "") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "t") html = back + b("edittext", "text", "Modifier") + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else html = back + b("style", "captions", "Style") + b("text", "text", "Modifier le texte") + b("del", "trash", "Supprimer") + b("delcaps", "trash", "Tout supprimer");
     $("edTools").innerHTML = html;
@@ -668,15 +675,242 @@
   }
   function closeFeeds() { feeds.forEach(f => f.close()); feeds.clear(); }
 
+  // ======================================================================
+  // EFFETS (motion design) + SUIVI DU VISAGE
+  // Tout est calculé à partir du temps : l'aperçu et l'export donnent exactement la même chose.
+  // ======================================================================
+  const FX = {
+    zoom: { label: "Zoom punch", dur: 0.7, pos: false },
+    shake: { label: "Secousse", dur: 0.45, pos: false },
+    flash: { label: "Flash", dur: 0.3, pos: false },
+    fire: { label: "Feu", dur: 2.5, pos: true },
+    sparks: { label: "Étincelles", dur: 1.5, pos: true },
+    confetti: { label: "Confettis", dur: 2.5, pos: false },
+    coins: { label: "Pièces", dur: 2.5, pos: false },
+    hearts: { label: "Cœurs", dur: 2.2, pos: true },
+    smoke: { label: "Fumée", dur: 2.5, pos: true },
+    circle: { label: "Cercle", dur: 1.8, pos: true },
+    arrow: { label: "Flèche", dur: 1.8, pos: true },
+  };
+  const rnd = (seed, k) => { const x = Math.sin(seed * 9301 + k * 49297) * 233280; return x - Math.floor(x); };   // hasard « fixe »
+  const easeOut = u => 1 - Math.pow(1 - Math.min(1, Math.max(0, u)), 3);
+
+  // ----- Suivi du visage (MediaPipe, gratuit, sur le téléphone) -----
+  const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21";
+  const FACE_MODEL = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
+  let faceDet = null, faceQueue = Promise.resolve();
+  async function faceDetector() {
+    if (faceDet) return faceDet;
+    const vision = await import(MP + "/vision_bundle.mjs");
+    const files = await vision.FilesetResolver.forVisionTasks(MP + "/wasm");
+    faceDet = await vision.FaceDetector.createFromOptions(files, { baseOptions: { modelAssetPath: FACE_MODEL, delegate: "GPU" }, runningMode: "IMAGE", minDetectionConfidence: 0.4 })
+      .catch(() => vision.FaceDetector.createFromOptions(files, { baseOptions: { modelAssetPath: FACE_MODEL, delegate: "CPU" }, runningMode: "IMAGE", minDetectionConfidence: 0.4 }));
+    return faceDet;
+  }
+  // Repère le visage 5 fois par seconde dans un rush (sur la copie légère) et garde sa position
+  function ensureFaces(ref) {
+    if (ref._faces || ref._facesP || ref.image) return ref._facesP || Promise.resolve();
+    return (ref._facesP = faceQueue = faceQueue.then(async () => {
+      try {
+        const m = await media(ref);
+        if (!m.v) return;
+        const det = await faceDetector();
+        const sink = new MB.CanvasSink(m.vt || m.v, { width: PW, height: PH, fit: "contain", poolSize: 2 });
+        const dur = m.dur || ref.dur || 5, out = [], ts = [];
+        for (let s = 0; s < dur; s += 0.2) ts.push(s + (m.off || 0));
+        let n = 0;
+        for await (const w of sink.canvasesAtTimestamps(ts)) {
+          const s = ts[n++] - (m.off || 0);
+          if (n % 10 === 0) $("edProxy").textContent = `Analyse des visages… ${Math.round(s / dur * 100)} %`;
+          if (!w) continue;
+          const r = det.detect(w.canvas).detections[0];
+          if (r) { const b = r.boundingBox; out.push({ t: s, x: (b.originX + b.width / 2) / PW, y: (b.originY + b.height / 2) / PH, w: b.width / PW, h: b.height / PH }); }
+        }
+        ref._faces = out;
+      } catch (e) { ref._faces = []; }
+      $("edProxy").textContent = "";
+      if (!playing) renderStill(t);
+    }));
+  }
+  function faceAt(ref, s) {   // position du visage (interpolée) au temps s du rush
+    const f = ref._faces;
+    if (!f || !f.length) return null;
+    if (s <= f[0].t) return f[0];
+    if (s >= f[f.length - 1].t) return f[f.length - 1];
+    let j = 0; while (f[j + 1].t < s) j++;
+    const a = f[j], b = f[j + 1];
+    if (b.t - a.t > 0.6) return s - a.t < b.t - s ? a : b;   // trou (visage perdu) : on garde le plus proche
+    const u = (s - a.t) / (b.t - a.t);
+    return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, w: a.w + (b.w - a.w) * u, h: a.h + (b.h - a.h) * u };
+  }
+  // Effets actifs au temps donné
+  const activeFx = time => effects.filter(e => time >= e.start && time < e.start + len(e));
+  // Zoom punch + secousse : modification de l'image principale
+  function mainFxTransform(time, W, H, focus) {
+    let z = 1, dx = 0, dy = 0;
+    activeFx(time).forEach(e => {
+      const age = time - e.start, d = len(e);
+      if (e.type === "zoom") {
+        const amp = e.amp || 0.22;
+        z *= 1 + amp * easeOut(age / 0.12) * (age > d - 0.12 ? easeOut((d - age) / 0.12) : 1);
+      } else if (e.type === "shake") {
+        const k = (1 - age / d) * W * 0.025;
+        dx += Math.sin(age * 70 + e.seed) * k; dy += Math.cos(age * 57 + e.seed * 2) * k;
+      }
+    });
+    return { z, dx, dy, fx: focus ? focus.x : W / 2, fy: focus ? focus.y : H / 2 };
+  }
+  // Position à l'écran d'un point de l'image du plan (nx, ny entre 0 et 1), avec zoom / cadrage / effets
+  function mainToScreen(c, local, nx, ny, W, H, mt) {
+    const v = valAt("v", c, local), r = v.rot * Math.PI / 180;
+    let px = (nx - 0.5) * W * v.scale, py = (ny - 0.5) * H * v.scale;
+    [px, py] = [px * Math.cos(r) - py * Math.sin(r), px * Math.sin(r) + py * Math.cos(r)];
+    px += W / 2 + v.x * W; py += H / 2 + v.y * H;
+    if (mt) { px = (px - mt.fx) * mt.z + mt.fx + mt.dx; py = (py - mt.fy) * mt.z + mt.fy + mt.dy; }
+    return { x: px, y: py, s: v.scale * (mt ? mt.z : 1) };
+  }
+  // Visage à l'écran au temps de la timeline (ou null)
+  function faceOnScreen(time, W, H, mt) {
+    const { i, off } = locate(time);
+    if (i < 0) return null;
+    const c = clips[i], f = faceAt(c.ref, c.in + off * sp(c));
+    if (!f) return null;
+    const p = mainToScreen(c, off, f.x, f.y, W, H, mt);
+    return { x: p.x, y: p.y, w: f.w * W * p.s, h: f.h * H * p.s };
+  }
+  function anchorOf(e, time, W, H, mt) {
+    const face = e.anchor !== "center" ? faceOnScreen(time, W, H, mt) : null;
+    if (face) return face;
+    return { x: (e.x ?? 0.5) * W, y: (e.y ?? 0.42) * H, w: W * 0.32, h: W * 0.4 };
+  }
+  // ----- Dessin des effets -----
+  function flame(g, x, y, r, a) {
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, `rgba(255,250,200,${a})`); gr.addColorStop(0.35, `rgba(255,170,40,${a * 0.9})`);
+    gr.addColorStop(0.7, `rgba(255,70,20,${a * 0.5})`); gr.addColorStop(1, "rgba(255,40,0,0)");
+    g.fillStyle = gr; g.beginPath(); g.ellipse(x, y, r * 0.75, r, 0, 0, Math.PI * 2); g.fill();
+  }
+  function heart(g, x, y, s) {
+    g.beginPath(); g.moveTo(x, y + s * 0.3);
+    g.bezierCurveTo(x - s, y - s * 0.4, x - s * 0.5, y - s, x, y - s * 0.45);
+    g.bezierCurveTo(x + s * 0.5, y - s, x + s, y - s * 0.4, x, y + s * 0.3); g.fill();
+  }
+  function drawFx(g, W, H, time, layer, mt) {
+    activeFx(time).forEach(e => {
+      const age = time - e.start, d = len(e), u = age / d, sd = e.seed || 1;
+      const fadeIn = easeOut(age / 0.2), fadeOut = Math.min(1, (d - age) / 0.3), A = Math.max(0, Math.min(fadeIn, fadeOut));
+      if (layer === "top") {
+        if (e.type === "flash") { g.fillStyle = `rgba(255,255,255,${Math.pow(Math.max(0, 1 - u), 2) * 0.7})`; g.fillRect(0, 0, W, H); }
+        return;
+      }
+      g.save();
+      const an = FX[e.type] && FX[e.type].pos ? anchorOf(e, time, W, H, mt) : null;
+      if (e.type === "fire") {   // flammes qui tournent autour de la tête
+        g.globalCompositeOperation = "lighter";
+        const N = 46, rx = an.w * 0.8 + W * 0.02, ry = an.h * 0.72 + W * 0.02;
+        for (let k = 0; k < N; k++) {
+          const life = 0.55 + rnd(sd, k) * 0.35, ph = (age + rnd(sd, k + 50) * life) % life / life;
+          const ang = (k / N) * Math.PI * 2 + age * 2.4;
+          const x = an.x + Math.cos(ang) * rx, y = an.y + Math.sin(ang) * ry - ph * W * 0.06;
+          flame(g, x, y, W * (0.05 + 0.045 * rnd(sd, k + 9)) * Math.sin(ph * Math.PI), A);
+        }
+      } else if (e.type === "sparks") {
+        g.globalCompositeOperation = "lighter"; g.lineCap = "round";
+        for (let k = 0; k < 70; k++) {
+          const t0 = rnd(sd, k) * d * 0.7, a = age - t0, life = 0.5 + rnd(sd, k + 3) * 0.4;
+          if (a < 0 || a > life) continue;
+          const ang = rnd(sd, k + 7) * Math.PI * 2, sp0 = W * (0.5 + rnd(sd, k + 11) * 0.9);
+          const x = an.x + Math.cos(ang) * sp0 * a, y = an.y + Math.sin(ang) * sp0 * a + W * 0.8 * a * a;
+          g.strokeStyle = `rgba(255,${200 + rnd(sd, k) * 55 | 0},120,${(1 - a / life) * A})`; g.lineWidth = W * 0.006;
+          g.beginPath(); g.moveTo(x, y); g.lineTo(x - Math.cos(ang) * W * 0.02, y - Math.sin(ang) * W * 0.02); g.stroke();
+        }
+      } else if (e.type === "confetti" || e.type === "coins") {
+        const cols = ["#FF5A4E", "#FFD23F", "#3EC1D3", "#7B61FF", "#4ADE80", "#FFFFFF"];
+        for (let k = 0; k < 60; k++) {
+          const t0 = rnd(sd, k) * d * 0.5, a = age - t0;
+          if (a < 0) continue;
+          const x = rnd(sd, k + 1) * W + Math.sin(a * 3 + k) * W * 0.04, y = -W * 0.05 + a * H * (0.35 + rnd(sd, k + 2) * 0.3);
+          if (y > H + 20) continue;
+          g.globalAlpha = A;
+          if (e.type === "coins") {
+            const r = W * 0.028, sq = Math.abs(Math.cos(a * 5 + k));
+            g.fillStyle = "#F5B800"; g.beginPath(); g.ellipse(x, y, r * sq + 1, r, 0, 0, Math.PI * 2); g.fill();
+            g.fillStyle = "#FFE680"; g.beginPath(); g.ellipse(x - r * 0.2 * sq, y - r * 0.2, r * 0.45 * sq + 0.5, r * 0.45, 0, 0, Math.PI * 2); g.fill();
+          } else {
+            g.fillStyle = cols[k % cols.length];
+            g.translate(x, y); g.rotate(a * 6 + k); g.fillRect(-W * 0.012, -W * 0.006, W * 0.024, W * 0.012); g.setTransform(1, 0, 0, 1, 0, 0);
+          }
+        }
+      } else if (e.type === "hearts") {
+        for (let k = 0; k < 16; k++) {
+          const t0 = rnd(sd, k) * d * 0.6, a = age - t0;
+          if (a < 0 || a > 1.4) continue;
+          g.globalAlpha = A * (1 - a / 1.4);
+          g.fillStyle = k % 3 ? "#FF4D6D" : "#FF8FA3";
+          heart(g, an.x + (rnd(sd, k + 4) - 0.5) * an.w * 1.6 + Math.sin(a * 4 + k) * W * 0.02, an.y + an.h * 0.3 - a * H * 0.25, W * (0.03 + rnd(sd, k + 5) * 0.025));
+        }
+      } else if (e.type === "smoke") {
+        for (let k = 0; k < 18; k++) {
+          const t0 = rnd(sd, k) * d * 0.7, a = age - t0;
+          if (a < 0 || a > 1.6) continue;
+          const r = W * (0.05 + a * 0.12), x = an.x + (rnd(sd, k + 2) - 0.5) * an.w + Math.sin(a * 2 + k) * W * 0.03, y = an.y + an.h * 0.5 - a * H * 0.12;
+          const gr = g.createRadialGradient(x, y, 0, x, y, r);
+          gr.addColorStop(0, `rgba(210,210,210,${0.35 * A * (1 - a / 1.6)})`); gr.addColorStop(1, "rgba(210,210,210,0)");
+          g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+        }
+      } else if (e.type === "circle") {
+        g.strokeStyle = e.color || "#FF5A4E"; g.lineWidth = W * 0.014; g.lineCap = "round"; g.globalAlpha = A;
+        g.beginPath(); g.ellipse(an.x, an.y, an.w * 0.8 + W * 0.03, an.h * 0.8 + W * 0.03, -0.2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * easeOut(age / 0.45)); g.stroke();
+      } else if (e.type === "arrow") {
+        const p = easeOut(age / 0.4), x1 = an.x + an.w * 0.75 + W * 0.04, y1 = an.y - an.h * 0.2;
+        const x0 = x1 + W * 0.22, y0 = y1 - W * 0.22, xe = x0 + (x1 - x0) * p, ye = y0 + (y1 - y0) * p;
+        g.strokeStyle = e.color || "#FF5A4E"; g.lineWidth = W * 0.016; g.lineCap = "round"; g.globalAlpha = A;
+        g.beginPath(); g.moveTo(x0, y0); g.lineTo(xe, ye); g.stroke();
+        if (p > 0.95) { const L = W * 0.05; g.beginPath(); g.moveTo(xe, ye); g.lineTo(xe + L, ye - L * 0.15); g.moveTo(xe, ye); g.lineTo(xe + L * 0.15, ye - L); g.stroke(); }
+      }
+      g.restore();
+    });
+  }
+  // Ajouter un effet (manuel ou par l'IA)
+  function addEffect(type, start, opts = {}) {
+    const def = FX[type];
+    if (!def) return null;
+    const st = Math.max(0, Math.min(Math.max(0, total() - 0.2), start));
+    const d = Math.max(0.2, Math.min(opts.dur || def.dur, total() - st));
+    const e = { type, start: +st.toFixed(3), in: 0, out: +d.toFixed(3), seed: Math.round(Math.random() * 1000) + 1, anchor: opts.anchor || (def.pos ? "face" : "center"), ...(opts.color ? { color: opts.color } : {}) };
+    effects.push(e);
+    if (e.anchor === "face") clips.forEach(c => ensureFaces(c.ref));
+    return e;
+  }
+  function fxSheet() {
+    pause();
+    sheet(`<b>Effets</b><div class="small" style="color:#999">Ajouté à la barre blanche. Feu, étincelles, cœurs, fumée, cercle et flèche suivent ton visage.</div>
+      <div class="esfx">${Object.entries(FX).map(([id, f]) => `<div><button data-fx="${id}" style="width:100%">${f.label}</button></div>`).join("")}</div>`);
+    $("edSheetBody").querySelectorAll("[data-fx]").forEach(b => b.onclick = () => {
+      save();
+      addEffect(b.dataset.fx, t);
+      sel = { type: "f", i: effects.length - 1 };
+      closeSheet(); draw(); renderStill(t);
+    });
+  }
+
   // Dessin d'une image complète (plan + superpositions) sur un canvas
   const TXT_RATIO = 0.06;
-  function drawMain(g, W, H, src, c, local) {   // plan principal avec zoom / cadrage / rotation
+  function drawMain(g, W, H, src, c, local, time) {   // plan principal avec zoom / cadrage / rotation + zoom punch / secousse
     const v = valAt("v", c, local);
-    if (v.scale === 1 && !v.x && !v.y && !v.rot) return g.drawImage(src, 0, 0, W, H);
+    let mt = null;
+    if (time !== undefined && effects.length) {
+      const f = faceAt(c.ref, c.in + local * sp(c));
+      mt = mainFxTransform(time, W, H, f ? mainToScreen(c, local, f.x, f.y, W, H, null) : null);
+      if (mt.z === 1 && !mt.dx && !mt.dy) mt = null;
+    }
+    if (!mt && v.scale === 1 && !v.x && !v.y && !v.rot) { g.drawImage(src, 0, 0, W, H); return null; }
     g.save();
+    if (mt) { g.translate(mt.fx + mt.dx, mt.fy + mt.dy); g.scale(mt.z, mt.z); g.translate(-mt.fx, -mt.fy); }
     g.translate(W / 2 + v.x * W, H / 2 + v.y * H); g.rotate(v.rot * Math.PI / 180); g.scale(v.scale, v.scale);
     g.drawImage(src, -W / 2, -H / 2, W, H);
     g.restore();
+    return mt;
   }
   function drawOverlayImg(g, W, H, src, o, local = t - o.start) {
     const v = valAt("o", o, local);
@@ -693,17 +927,22 @@
   function drawTexts(g, W, H, time) {
     texts.forEach(x => {
       if (time < x.start || time >= x.start + len(x)) return;
-      const v = valAt("t", x, time - x.start), size = H * TXT_RATIO * v.scale;
+      const age = time - x.start, v = valAt("t", x, age);
+      let k = 1, ox = 0, oy = 0;
+      if (x.anim === "pop") k = age < 0.25 ? 0.3 + 0.95 * easeOut(age / 0.18) - 0.25 * Math.max(0, (age - 0.18) / 0.07) : 1;
+      else if (x.anim === "slide") ox = -(1 - easeOut(age / 0.28)) * W * 0.7;
+      else if (x.anim === "shake") { ox = Math.sin(age * 60) * W * 0.008; oy = Math.cos(age * 47) * W * 0.008; }
+      const size = H * TXT_RATIO * v.scale * k;
       g.save();
       g.globalAlpha = Math.max(0, Math.min(1, v.op));
-      g.translate(v.x * W, v.y * H); g.rotate(v.rot * Math.PI / 180);
+      g.translate(v.x * W + ox, v.y * H + oy); g.rotate(v.rot * Math.PI / 180);
       g.font = `800 ${size}px Inter, system-ui, sans-serif`;
       g.textAlign = "center"; g.textBaseline = "middle"; g.lineJoin = "round";
       const lines = String(x.text).split("\n"), lh = size * 1.1;
       lines.forEach((l, j) => {
         const y = (j - (lines.length - 1) / 2) * lh;
         g.lineWidth = size * 0.14; g.strokeStyle = "#000"; g.strokeText(l, 0, y);
-        g.fillStyle = "#fff"; g.fillText(l, 0, y);
+        g.fillStyle = x.color || "#fff"; g.fillText(l, 0, y);
       });
       g.restore();
     });
@@ -718,7 +957,7 @@
     if (img) lastMain = img;
     if (!lastMain) return;   // rien de décodé encore : on garde l'image affichée
     vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH);
-    drawMain(vg, PW, PH, lastMain, c, off);
+    const mt = drawMain(vg, PW, PH, lastMain, c, off, time);
     // prépare le plan suivant à l'avance : zéro latence au passage
     if (clips[i + 1] && len(c) - off < 1.5) feedFor(clips[i + 1], 0);
     const visible = overlays.filter(o => time >= o.start && time < o.start + len(o) && !o.ref.image).length;
@@ -730,7 +969,9 @@
       if (im) drawOverlayImg(vg, PW, PH, im, o, time - o.start);
     });
     drawTexts(vg, PW, PH, time);
+    drawFx(vg, PW, PH, time, "mid", mt);
     drawCaps(vg, PW, PH, time);
+    drawFx(vg, PW, PH, time, "top", mt);
     // libère les flux qui ne servent plus
     feeds.forEach((f, item) => {
       const keep = item === c || item === clips[i + 1] || (overlays.includes(item) && time >= item.start - 1.5 && time < item.start + len(item));
@@ -761,10 +1002,13 @@
     }
     if (my !== stillToken) return;
     vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH);
-    if (w) { drawMain(vg, PW, PH, w.canvas, c, off); lastMain = null; }
+    let mt = null;
+    if (w) { mt = drawMain(vg, PW, PH, w.canvas, c, off, time); lastMain = null; }
     ovs.forEach(([src, o]) => drawOverlayImg(vg, PW, PH, src, o, time - o.start));
     drawTexts(vg, PW, PH, time);
+    drawFx(vg, PW, PH, time, "mid", mt);
     drawCaps(vg, PW, PH, time);
+    drawFx(vg, PW, PH, time, "top", mt);
   }
 
   // ---------- Lecture : horloge du son = image et son parfaitement calés ----------
@@ -907,6 +1151,7 @@
       else if (press.ph === "cap") captionSheet();
       else if (press.ph === "ov") $("edOvFile").click();
       else if (press.ph === "txt") textAddSheet();
+      else if (press.ph === "fx") fxSheet();
       else {
         const same = sel && sel.type === press.kind && sel.i === press.i;
         sel = same ? null : { type: press.kind, i: press.i };
@@ -1073,6 +1318,8 @@
     else if (name === "speed") return speedSheet();
     else if (name === "adjust") return adjustSheet();
     else if (name === "ai") return assistSheet();
+    else if (name === "fx") return fxSheet();
+    else if (name === "anchor" && sel && sel.type === "f") { save(); const e = effects[sel.i]; e.anchor = e.anchor === "face" ? "center" : "face"; if (e.anchor === "face") clips.forEach(c => ensureFaces(c.ref)); }
     else if (name === "addtext") return textAddSheet();
     else if (name === "edittext") return textAddSheet(sel.i);
     else if (name === "volume") return volumeSheet();
@@ -1091,16 +1338,23 @@
     const cur = edit !== undefined ? texts[edit] : null;
     sheet(`<b>${cur ? "Modifier le texte" : "Ajouter un texte"}</b>
       <input type="text" id="edTxt" value="${cur ? esc(cur.text) : ""}" placeholder="Ton texte">
+      <div class="small" style="color:#999;margin:0">Animation</div>
+      <div class="esfx">${[["none", "Aucune"], ["pop", "Pop"], ["slide", "Glisse"], ["shake", "Tremble"]].map(([id, l]) => `<div><button data-an="${id}" class="${(cur ? cur.anim || "none" : "pop") === id ? "add" : ""}" style="width:100%">${l}</button></div>`).join("")}</div>
+      <div class="small" style="color:#999;margin:0">Couleur</div>
+      <div style="display:flex;gap:8px">${["#FFFFFF", "#FF5A4E", "#FFD23F", "#3EC1D3", "#4ADE80"].map(c => `<button data-co="${c}" style="width:34px;height:34px;border-radius:17px;border:3px solid ${(cur ? cur.color || "#FFFFFF" : "#FFFFFF") === c ? "#fff" : "#333"};background:${c}"></button>`).join("")}</div>
       <button class="main" id="edTxtOk">OK</button>`);
     setTimeout(() => $("edTxt").focus(), 50);
+    let anim = cur ? cur.anim || "none" : "pop", color = cur ? cur.color || "#FFFFFF" : "#FFFFFF";
+    $("edSheetBody").querySelectorAll("[data-an]").forEach(b => b.onclick = () => { anim = b.dataset.an; $("edSheetBody").querySelectorAll("[data-an]").forEach(x => x.classList.toggle("add", x === b)); });
+    $("edSheetBody").querySelectorAll("[data-co]").forEach(b => b.onclick = () => { color = b.dataset.co; $("edSheetBody").querySelectorAll("[data-co]").forEach(x => (x.style.borderColor = x === b ? "#fff" : "#333")); });
     $("edTxtOk").onclick = () => {
       const v = $("edTxt").value.trim();
       if (!v) return closeSheet();
       save();
-      if (cur) cur.text = v;
+      if (cur) { cur.text = v; cur.anim = anim; cur.color = color; }
       else {
         const start = Math.min(t, Math.max(0, total() - 0.5));
-        texts.push({ text: v, start, in: 0, out: Math.max(0.5, Math.min(3, total() - start)), x: 0.5, y: 0.35, scale: 1, rot: 0, op: 1, kf: [] });
+        texts.push({ text: v, start, in: 0, out: Math.max(0.5, Math.min(3, total() - start)), x: 0.5, y: 0.35, scale: 1, rot: 0, op: 1, kf: [], anim, color });
         sel = { type: "t", i: texts.length - 1 };
       }
       closeSheet(); draw(); renderStill(t);
@@ -1381,7 +1635,7 @@
       added += d - start;
       if (typeof makeThumb === "function") makeThumb(r).then(draw);
     }
-    [...audios, ...overlays, ...caps, ...texts].forEach(x => { if (x.start >= at - 0.01) x.start += added; });   // le reste suit
+    [...audios, ...overlays, ...caps, ...texts, ...effects].forEach(x => { if (x.start >= at - 0.01) x.start += added; });   // le reste suit
     sel = null; resetPlayers(); draw(); seek(at + added);   // la barre passe après le nouveau rush
     toast("Rush ajouté ");
   }
@@ -1456,20 +1710,22 @@
       style_legendes: capStyle.style,
       textes: texts.map((x, i) => { ids.set("T" + (i + 1), x); return { id: "T" + (i + 1), debut: r2(x.start), fin: r2(x.start + len(x)), texte: x.text }; }),
       superpositions: overlays.map((o, i) => { ids.set("S" + (i + 1), o); return { id: "S" + (i + 1), debut: r2(o.start), fin: r2(o.start + len(o)) }; }),
+      effets: effects.map((e, i) => { ids.set("E" + (i + 1), e); return { id: "E" + (i + 1), type: e.type, debut: r2(e.start), fin: r2(e.start + len(e)) }; }),
       sons: audios.map((a, i) => { ids.set("A" + (i + 1), a); return { id: "A" + (i + 1), type: a.kind, nom: a.ref.label, debut: r2(a.start), fin: r2(a.start + len(a)) }; }),
     };
     const lib = await libList().catch(() => []);
     const sys = `Tu es l'assistant d'un éditeur vidéo façon CapCut. On te donne l'état du montage (temps en secondes) et une demande. Réponds UNIQUEMENT en JSON :
 {"actions":[...],"reponse":"1 phrase en français qui dit ce que tu as fait"}
 Actions possibles (n'utilise que les id fournis) :
-{"do":"supprimer","id":"P2"} (plan, légende, texte, superposition ou son)
+{"do":"supprimer","id":"P2"} (plan, légende, texte, superposition, son ou effet E1…)
 {"do":"couper","id":"P1","a":3.2} (coupe un plan en deux au temps a)
 {"do":"raccourcir","id":"P1","debut":0.5,"fin":0.3} (secondes retirées au début / à la fin d'un plan)
 {"do":"vitesse","id":"P1","valeur":2} (0.5 à 100)
 {"do":"volume","id":"P1","valeur":1.2} (0 à 2)
 {"do":"deplacer_plan","id":"P3","position":1} (nouvelle place, 1 = premier)
 {"do":"zoom","id":"P1","de":1,"a":1.6,"debut":0,"fin":1.5,"cadrage_x":0,"cadrage_y":-0.1} (zoom animé ; cadrage en fraction de l'image, négatif = gauche/haut ; marche aussi sur T et S pour la taille)
-{"do":"ajouter_texte","texte":"...","debut":0,"fin":3,"position":"haut|milieu|bas"}
+{"do":"ajouter_texte","texte":"...","debut":0,"fin":3,"position":"haut|milieu|bas","anim":"pop|slide|shake|none","couleur":"#FF5A4E"}
+{"do":"effet","type":"zoom|shake|flash|fire|sparks|confetti|coins|hearts|smoke|circle|arrow","a":2.5,"duree":2,"ancrage":"visage|centre"} (fire = flammes autour de la tête)
 {"do":"modifier_texte","id":"T1","texte":"..."} ou {"do":"modifier_texte","id":"L3","texte":"..."}
 {"do":"style_legendes","style":"box|karaoke|pop|classic","position":"haut|milieu|bas","taille":1}
 {"do":"bruitage","nom":"nom exact","a":2.5} (bruitages disponibles : ${lib.length ? lib.map(s => s.name).join(", ") : "aucun"})
@@ -1484,7 +1740,7 @@ Si la demande est impossible, renvoie "actions":[] et explique dans "reponse".`;
     }
     save();
     let done = 0;
-    const kindOf = id => ({ P: "v", L: "c", T: "t", S: "o", A: "a" }[String(id)[0]]);
+    const kindOf = id => ({ P: "v", L: "c", T: "t", S: "o", A: "a", E: "f" }[String(id)[0]]);
     const listOf = k => (k === "v" ? clips : arr(k));
     for (const a of plan.actions || []) {
       try {
@@ -1516,7 +1772,8 @@ Si la demande est impossible, renvoie "actions":[] et explique dans "reponse".`;
           } break;
           case "ajouter_texte": {
             const st = Math.max(0, Math.min(total() - 0.3, +a.debut || 0)), en = Math.min(total(), Math.max(st + 0.3, +a.fin || st + 3));
-            texts.push({ text: String(a.texte || "Texte"), start: st, in: 0, out: en - st, x: 0.5, y: /haut/i.test(a.position) ? 0.18 : /bas/i.test(a.position) ? 0.8 : 0.45, scale: 1, rot: 0, op: 1, kf: [] });
+            texts.push({ text: String(a.texte || "Texte"), start: st, in: 0, out: en - st, x: 0.5, y: /haut/i.test(a.position) ? 0.18 : /bas/i.test(a.position) ? 0.8 : 0.45, scale: 1, rot: 0, op: 1, kf: [],
+              anim: ["pop", "slide", "shake"].includes(a.anim) ? a.anim : "none", color: /^#[0-9a-f]{6}$/i.test(a.couleur || "") ? a.couleur : "#FFFFFF" });
             done++;
           } break;
           case "modifier_texte": if (obj && "text" in obj) { obj.text = String(a.texte || obj.text); if (k === "c") obj.words = null; done++; } break;
@@ -1536,6 +1793,7 @@ Si la demande est impossible, renvoie "actions":[] et explique dans "reponse".`;
             done++;
           } break;
           case "son_des_plans": clipMute = !!a.coupe; done++; break;
+          case "effet": if (FX[a.type] && addEffect(a.type, +a.a || t, { dur: +a.duree || undefined, anchor: /centre/i.test(a.ancrage || "") ? "center" : undefined })) done++; break;
         }
       } catch (e) { /* action ignorée */ }
     }
@@ -1567,6 +1825,7 @@ Si la demande est impossible, renvoie "actions":[] et explique dans "reponse".`;
     let words;
     try {
       for (const c of clips) { await media(c.ref); await decodeAudio(c.ref); }
+      clips.forEach(c => ensureFaces(c.ref));   // repérage du visage en arrière-plan (pour les effets)
       steps[0].st = "done"; steps[0].info = `${clips.length} rush(s), ${before.toFixed(1)} s`;
       steps[1].st = "doing"; show();
       const data = await groqTranscribe(await mixAudio(), true);
@@ -1607,12 +1866,19 @@ Si la demande est impossible, renvoie "actions":[] et explique dans "reponse".`;
     let plan = null, note = "";
     try {
       const list = segs.map(s => `${s.id} (rush ${s.rush}, ${(s.out - s.in).toFixed(1)} s) : ${s.text ? "« " + s.text + " »" : "[plan sans parole]"}`).join("\n");
-      const sys = `Tu es un monteur vidéo TikTok expert. On te donne les morceaux d'une vidéo (dans l'ordre où ils ont été filmés) et la demande de l'utilisateur.
-Décide du montage. Par défaut : garde l'ordre, et si une phrase a été dite plusieurs fois (prises ratées, répétitions), ne garde que la meilleure version (en général la dernière). Garde les plans sans parole utiles. Respecte une durée maximale si elle est demandée.
+      const sys = `Tu es un monteur vidéo TikTok de haut niveau, spécialiste des montages très dynamiques (style gros créateurs). On te donne les morceaux d'une vidéo (dans l'ordre où ils ont été filmés) et la demande de l'utilisateur.
+1) Choix des morceaux : garde l'ordre ; si une phrase a été dite plusieurs fois (prises ratées), garde seulement la meilleure (en général la dernière). Respecte une durée maximale si elle est demandée.
+2) Rythme : sauf demande contraire, rends le montage vivant : un "zoom" punch sur un mot fort toutes les 2 à 4 secondes, une "shake" sur les moments chocs, un "flash" sur les changements d'idée.
+3) Effets qui illustrent le SENS des mots : feu/chaud/brûler -> "fire" (flammes autour de la tête), argent/gagner/prix -> "coins", amour/adore -> "hearts", bravo/réussite/fête -> "confetti", énergie/explosion/wow -> "sparks", fumée/mystère -> "smoke", "regarde ça"/montrer -> "arrow" ou "circle". N'en mets pas partout : 1 effet fort toutes les 4 à 6 secondes maximum.
+4) Gros textes : sur 2 à 5 mots clés importants, un texte court en MAJUSCULES (1 à 3 mots) avec une animation "pop", "slide" ou "shake" et une couleur (#FFFFFF, #FF5A4E, #FFD23F, #3EC1D3, #4ADE80).
+Pour placer un effet ou un texte, donne le morceau ("at") et le mot exact prononcé ("word") où il doit tomber.
 Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
-{"keep":["S1","S3"],"speed":{"S2":2},"volume":{"S1":1.2},"captions":{"on":true,"style":"box|karaoke|pop|classic","position":"haut|milieu|bas","size":1},"sfx":[{"name":"nom exact d'un bruitage","at":"S3","where":"start|end"}],"summary":"1 ou 2 phrases en français qui expliquent ce que tu as fait"}
+{"keep":["S1","S3"],"speed":{"S2":2},"volume":{"S1":1.2},"captions":{"on":true,"style":"box|karaoke|pop|classic","position":"haut|milieu|bas","size":1},
+"effects":[{"type":"zoom|shake|flash|fire|sparks|confetti|coins|hearts|smoke|circle|arrow","at":"S3","word":"feu","duration":2}],
+"texts":[{"text":"FEU","at":"S3","word":"feu","anim":"pop|slide|shake","color":"#FF5A4E","position":"haut|milieu|bas","duration":1.5}],
+"sfx":[{"name":"nom exact d'un bruitage","at":"S3","where":"start|end"}],"summary":"1 ou 2 phrases en français qui expliquent ce que tu as fait"}
 "speed" et "volume" seulement si demandé. Vitesse entre 0.5 et 100. Bruitages disponibles : ${lib.length ? lib.map(s => s.name).join(", ") : "aucun"} (n'en invente pas).`;
-      const answer = await askModel([{ role: "system", content: sys }, { role: "user", content: `Demande : ${prompt || "montage dynamique, coupe les blancs et les répétitions, légendes style Boîte"}\n\nMorceaux :\n${list}` }]);
+      const answer = await askModel([{ role: "system", content: sys }, { role: "user", content: `Demande : ${prompt || "montage TikTok très dynamique : coupe les blancs et les répétitions, zooms punch, gros textes animés sur les mots clés, effets qui illustrent ce que je dis, légendes style Boîte"}\n\nMorceaux :\n${list}` }]);
       plan = JSON.parse(answer.slice(answer.indexOf("{"), answer.lastIndexOf("}") + 1));
       if (!Array.isArray(plan.keep) || !plan.keep.length) throw new Error("plan vide");
       steps[2].st = "done"; steps[2].info = plan.summary || `${plan.keep.length} morceaux gardés sur ${segs.length}`;
@@ -1638,6 +1904,7 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
       at += len(clip);
     });
     if (newClips.length) clips = newClips;
+    effects = []; texts = [];   // nouveau montage : on repart d'une base propre (↶ pour revenir)
     resetPlayers();
     const cap = plan.captions || { on: true };
     caps = cap.on === false ? [] : chunkWords(mapped.map(m => ({ word: m.word, start: Math.max(0, m.start), end: Math.max(m.start + 0.05, m.end) })));
@@ -1658,9 +1925,31 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
       audios.push({ ref, kind: "sfx", start: Math.max(0, startAt[f.at] + (f.where === "end" ? segLen - Math.min(d, segLen) : 0)), in: 0, out: d, vol: 1 });
       sfxDone++;
     }
+    // Effets et gros textes, placés sur le mot prononcé
+    const timeOf = (id, word) => {
+      if (startAt[id] === undefined) return null;
+      const seg = byId[id], segLen = len(newClips[kept.indexOf(seg)]), a = startAt[id], b = a + segLen;
+      const w = String(word || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+      const hit = w && mapped.find(m => m.start >= a - 0.05 && m.start < b && String(m.word).toLowerCase().replace(/[^\p{L}\p{N}]/gu, "").startsWith(w));
+      return hit ? hit.start : a;
+    };
+    let fxDone = 0, txDone = 0;
+    for (const f of plan.effects || []) {
+      const at = timeOf(f.at, f.word);
+      if (at === null || !FX[f.type]) continue;
+      if (addEffect(f.type, at - (f.type === "zoom" || f.type === "flash" ? 0.05 : 0), { dur: +f.duration || undefined })) fxDone++;
+    }
+    for (const x of plan.texts || []) {
+      const at = timeOf(x.at, x.word);
+      if (at === null || !x.text) continue;
+      const d = Math.min(Math.max(0.6, +x.duration || 1.4), Math.max(0.3, total() - at));
+      texts.push({ text: String(x.text).slice(0, 40), start: +at.toFixed(3), in: 0, out: +d.toFixed(3), x: 0.5, y: /haut/i.test(x.position) ? 0.2 : /bas/i.test(x.position) ? 0.62 : 0.42, scale: 1.25, rot: 0, op: 1, kf: [],
+        anim: ["pop", "slide", "shake"].includes(x.anim) ? x.anim : "pop", color: /^#[0-9a-f]{6}$/i.test(x.color || "") ? x.color : "#FFFFFF" });
+      txDone++;
+    }
     const gain = before - total();
     steps[3].st = "done";
-    steps[3].info = [`${kept.length} morceaux`, caps.length ? `${caps.length} légendes (${CAP_STYLES.find(s => s[0] === capStyle.style)[1]})` : "sans légendes", sfxDone ? `${sfxDone} bruitage(s)` : ""].filter(Boolean).join(" · ");
+    steps[3].info = [`${kept.length} morceaux`, fxDone ? `${fxDone} effet(s)` : "", txDone ? `${txDone} gros texte(s)` : "", caps.length ? `${caps.length} légendes (${CAP_STYLES.find(s => s[0] === capStyle.style)[1]})` : "sans légendes", sfxDone ? `${sfxDone} bruitage(s)` : ""].filter(Boolean).join(" · ");
     sel = null; draw(); seek(0);
     aiSheet(steps, `<div style="margin-top:6px;font-size:15px">Ton montage est prêt : <b>${total().toFixed(1)} s</b>${gain > 0.05 ? ` (au lieu de ${before.toFixed(1)} s)` : ""}.</div>
       <button class="main" id="aiPlay">Regarder</button>
@@ -1806,6 +2095,7 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
       say("Préparation…");
       await loadMB();
       for (const x of [...clips, ...overlays, ...audios]) await media(x.ref);
+      if (effects.some(e => e.anchor === "face" && FX[e.type] && FX[e.type].pos)) { say("Analyse des visages…"); for (const c of clips) await ensureFaces(c.ref); }
       if (!(await MB.canEncodeAudio("aac"))) (await import("./vendor/mediabunny-aac-encoder.min.mjs")).registerAacEncoder();
       const out = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: "in-memory" }), target: new MB.BufferTarget() });
       const cv = document.createElement("canvas"); cv.width = EW; cv.height = EH;
@@ -1835,7 +2125,8 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
         }
         if (it) { const r = await it.next(); if (!r.done && r.value) frame = r.value.canvas; }
         g.fillStyle = "#000"; g.fillRect(0, 0, EW, EH);
-        if (frame && ci >= 0) drawMain(g, EW, EH, frame, clips[ci], tt - clipRange[ci][2]);
+        let mtx = null;
+        if (frame && ci >= 0) mtx = drawMain(g, EW, EH, frame, clips[ci], tt - clipRange[ci][2], tt);
         // superpositions
         for (let j = 0; j < overlays.length; j++) {
           const o = overlays[j], [a, b] = ovRange[j];
@@ -1847,7 +2138,9 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
         }
         // légendes
         drawTexts(g, EW, EH, tt);
+        drawFx(g, EW, EH, tt, "mid", mtx);
         drawCaps(g, EW, EH, tt);
+        drawFx(g, EW, EH, tt, "top", mtx);
         await vs.add(tt, 1 / FPS);
         if (n % 10 === 0) say(`Export : ${Math.round(n / N * 100)} %`);
       }
