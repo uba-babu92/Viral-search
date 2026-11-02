@@ -375,8 +375,8 @@
       + b("camera", "cam", camRec ? "Filme…" : "Caméra", camRec ? "rec" : "");
     else if (sel.type === "v") html = back + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("speed", "speed", "Vitesse") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "a") html = back + b("split", "split", "Diviser") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
-    else if (sel.type === "o") html = back + b("adjust", "adjust", "Ajuster") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
-    else if (sel.type === "t") html = back + b("edittext", "text", "Modifier") + b("adjust", "adjust", "Ajuster") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
+    else if (sel.type === "o") html = back + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
+    else if (sel.type === "t") html = back + b("edittext", "text", "Modifier") + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else html = back + b("style", "captions", "Style") + b("text", "text", "Modifier le texte") + b("del", "trash", "Supprimer") + b("delcaps", "trash", "Tout supprimer");
     $("edTools").innerHTML = html;
   }
@@ -1018,7 +1018,10 @@
       const a = list[sel.i], off = t - a.start;
       if (off < 0.1 || off > len(a) - 0.1) return toast("Place la barre blanche sur l'élément");
       save();
-      list.splice(sel.i, 1, { ...a, out: a.in + off }, { ...a, start: t, in: a.in + off });
+      // les clés d'animation suivent chaque morceau
+      const kA = (a.kf || []).filter(k => k.t <= off).map(k => ({ ...k })), kB = (a.kf || []).filter(k => k.t >= off).map(k => ({ ...k, t: +(k.t - off).toFixed(3) }));
+      list.splice(sel.i, 1, { ...a, out: a.in + off * sp(a), kf: kA }, { ...a, start: t, in: a.in + off * sp(a), kf: kB });
+      sel = { type: sel.type, i: sel.i + 1 };
     } else if (name === "dup" && sel) {
       save();
       if (sel.type === "v") { clips.splice(sel.i + 1, 0, { ...clips[sel.i] }); sel = { type: "v", i: sel.i + 1 }; }
