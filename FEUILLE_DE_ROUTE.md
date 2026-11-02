@@ -11,6 +11,7 @@
 - Éditeur simple : vidéos (couper, déplacer), sons/musique, voix off, superpositions. Export via Shotstack.
 - Fait : couper, glisser (appui long), rallonger/raccourcir, vitesse x0,5 à x100, volume par élément, bruitages perso (gardés sur le téléphone), voix off en appui maintenu, légendes façon TikTok (Groq Whisper) modifiables et déplaçables, superpositions (vidéo/image), lecture sans noir ni latence, export qualité haute.
 - Moteur Mediabunny (vendor/) : aperçu image par image sans freeze, sur des proxys légers (432x768) fabriqués à l'import, export MP4 1080p sur le téléphone (sans Shotstack, sans logo).
+- Outil Caméra dans l'éditeur : appui maintenu = selfie inséré à la barre blanche, appui simple = caméra complète.
 - Shotstack ne sert plus pour l'export (gardé pour un futur montage IA).
 - Appli iPhone native (compte développeur Apple 99 $/an) si la caméra web ne suffit pas.
 - S'inspirer de l'ergonomie de CapCut (timeline, pistes, sous-titres animés, textes, coupes).

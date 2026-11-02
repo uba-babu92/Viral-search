@@ -182,7 +182,21 @@
     drawRushes();
     makeThumbs();
   }
-  $("camNext").onclick = () => $("camChoice").classList.remove("hidden");
+  // Mode « ajout depuis l'éditeur » : Suivant renvoie directement les plans à l'éditeur
+  let insertCb = null;
+  window.openCameraFor = cb => {
+    insertCb = cb;
+    $("cam").style.zIndex = 90;   // au-dessus de l'éditeur
+    open();
+  };
+  $("camNext").onclick = () => {
+    if (!insertCb) return $("camChoice").classList.remove("hidden");
+    const fs = files(), cb = insertCb;
+    clips.length = 0;
+    insertCb = null; $("cam").style.zIndex = "";
+    close();
+    cb(fs.map(f => ({ file: f, url: URL.createObjectURL(f), cam: true })));
+  };
   $("camChoiceClose").onclick = () => $("camChoice").classList.add("hidden");
   $("camToAI").onclick = () => {
     $("camChoice").classList.add("hidden");
@@ -210,7 +224,7 @@
   }
 
   $("filmOpen").onclick = open;
-  $("camClose").onclick = close;
+  $("camClose").onclick = () => { if (insertCb) { insertCb = null; $("cam").style.zIndex = ""; } close(); };
   $("camFlip").onclick = flip;
   document.addEventListener("visibilitychange", () => { if (document.hidden && recorder) stopRec(); });
 })();

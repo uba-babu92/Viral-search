@@ -30,6 +30,7 @@
     speed: '<path d="M12 14l4-4"/><path d="M3.3 19a10 10 0 1 1 17.4 0"/>',
     text: '<path d="M4 7V4h16v3M9 20h6M12 4v16"/>',
     back: '<path d="m15 18-6-6 6-6"/>',
+    cam: '<path d="m16 13 5 3V8l-5 3"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
   };
   const ic = (n, s = 22) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
@@ -53,6 +54,7 @@
   .eov .ox { top: -14px; left: -14px; } .eov .orz { bottom: -14px; right: -14px; }
   #edCap { position: absolute; transform: translate(-50%, -50%); width: 86%; text-align: center; color: transparent; font-weight: 800; line-height: 1.3; touch-action: none; z-index: 3; border-radius: 6px; }
   #edCap.sel { outline: 1px dashed #fffa; }
+  #edPip { position: absolute; top: 10px; right: 10px; width: 34%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 10px; border: 2px solid #ef4444; transform: scaleX(-1); z-index: 5; background: #000; }
   #ed .ectrl { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 16px; font-size: 13px; }
   #edTime b { color: #fff; font-weight: 500; } #edTime { color: #777; }
   #edPlay { border: 0; background: none; color: #fff; display: flex; padding: 6px; }
@@ -106,6 +108,7 @@
     <div class="eprev"><div class="stage" id="edStage">
       <canvas id="edCanvas"></canvas>
       <div id="edOvs"></div><div id="edCap" class="hidden"></div>
+      <video id="edPip" class="hidden" playsinline muted autoplay></video>
     </div></div>
     <div class="ectrl"><span id="edTime"><b>00:00</b> / 00:00</span><button id="edPlay">${ic("play", 30)}</button>
       <span class="eundo"><button id="edUndo">${ic("undo")}</button><button id="edRedo">${ic("redo")}</button></span></div>
@@ -299,7 +302,8 @@
     const back = `<button data-t="back" class="back">${ic("back")}</button>`;
     let html;
     if (!sel) html = b("edit", "scissors", "Modifier") + b("sound", "note", "Son")
-      + b("voice", "mic", voiceRec ? "Parle…" : "Voix off", voiceRec ? "rec" : "") + b("captions", "captions", "Légendes") + b("overlay", "overlay", "Superposition");
+      + b("voice", "mic", voiceRec ? "Parle…" : "Voix off", voiceRec ? "rec" : "") + b("captions", "captions", "Légendes") + b("overlay", "overlay", "Superposition")
+      + b("camera", "cam", camRec ? "Filme…" : "Caméra", camRec ? "rec" : "");
     else if (sel.type === "v") html = back + b("split", "split", "Diviser") + b("speed", "speed", "Vitesse") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "a") html = back + b("split", "split", "Diviser") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "o") html = back + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
@@ -805,10 +809,17 @@
   $("edMute").onclick = () => { save(); clipMute = !clipMute; draw(); seek(t); toast(clipMute ? "Son des vidéos coupé" : "Son des vidéos activé"); };
 
   // Voix off : on reste appuyé pour enregistrer, on lâche pour arrêter
-  $("edTools").addEventListener("pointerdown", e => { const b = e.target.closest('[data-t="voice"]'); if (b) { e.preventDefault(); startVoice(); } });
-  ["pointerup", "pointercancel"].forEach(ev => window.addEventListener(ev, () => { if (voiceRec) stopVoice(); }));
+  $("edTools").addEventListener("pointerdown", e => {
+    if (e.target.closest('[data-t="voice"]')) { e.preventDefault(); startVoice(); }
+    if (e.target.closest('[data-t="camera"]')) { e.preventDefault(); camPress = setTimeout(() => { camPress = null; startCam(); }, 250); }
+  });
+  ["pointerup", "pointercancel"].forEach(ev => window.addEventListener(ev, () => {
+    if (voiceRec) stopVoice();
+    if (camPress) { clearTimeout(camPress); camPress = null; if (ev === "pointerup") openFullCamera(); }   // appui simple : caméra complète
+    else if (camRec || camWanted) stopCam();
+  }));
   $("edTools").addEventListener("contextmenu", e => e.preventDefault());
-  $("edTools").addEventListener("click", e => { const b = e.target.closest("button"); if (b && b.dataset.t !== "voice") tool(b.dataset.t); });
+  $("edTools").addEventListener("click", e => { const b = e.target.closest("button"); if (b && b.dataset.t !== "voice" && b.dataset.t !== "camera") tool(b.dataset.t); });
 
   function tool(name) {
     pause();
@@ -1054,6 +1065,74 @@
   function stopVoice() {
     voiceWanted = false;
     if (voiceRec && voiceRec.state !== "inactive") voiceRec.stop();
+  }
+
+  // ----- Caméra : appui maintenu = selfie inséré à la barre blanche ; appui simple = caméra complète -----
+  let camPress = null, camRec = null, camStream = null, camWanted = false, camChunks = [], camTime = 0;
+  // Insère des rushs à la barre blanche (coupe le plan si besoin) et décale ce qui suit
+  async function insertRushes(list) {
+    if (!list.length) return;
+    save();
+    const at = Math.min(t, total());
+    let idx = clips.length;
+    if (clips.length) {
+      const { i, off } = locate(at);
+      const c = clips[i];
+      if (off < 0.05) idx = i;
+      else if (off > len(c) - 0.05) idx = i + 1;
+      else { const cut = c.in + off * sp(c); clips.splice(i, 1, { ...c, out: cut }, { ...c, in: cut }); idx = i + 1; }
+    }
+    let added = 0;
+    for (const r of list) {
+      refs.push(r);
+      const d = await mediaDuration(r);
+      const start = r.cam && d > 0.6 ? 0.1 : 0;
+      clips.splice(idx++, 0, { ref: r, in: start, out: d, speed: 1, vol: 1 });
+      added += d - start;
+      if (typeof makeThumb === "function") makeThumb(r).then(draw);
+    }
+    [...audios, ...overlays, ...caps].forEach(x => { if (x.start >= at - 0.01) x.start += added; });   // le reste suit
+    sel = null; resetPlayers(); draw(); seek(at + added);   // la barre passe après le nouveau rush
+    toast("Rush ajouté ✅");
+  }
+  function openFullCamera() {
+    pause();
+    if (typeof openCameraFor === "function") openCameraFor(list => insertRushes(list));
+  }
+  async function startCam() {
+    if (camRec || camWanted) return;
+    camWanted = true;
+    pause();
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    } catch (e) { camWanted = false; return toast("Caméra refusée : autorise-la dans les réglages Safari"); }
+    if (!camWanted) { camStream.getTracks().forEach(tr => tr.stop()); return; }   // relâché trop vite
+    const pip = $("edPip");
+    pip.srcObject = camStream; pip.classList.remove("hidden"); pip.play().catch(() => {});
+    const mime = ["video/mp4;codecs=avc1", "video/mp4", "video/webm"].find(m => MediaRecorder.isTypeSupported(m)) || "";
+    camChunks = [];
+    camRec = new MediaRecorder(camStream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 12e6, audioBitsPerSecond: 192e3 });
+    camRec.ondataavailable = e => e.data.size && camChunks.push(e.data);
+    camRec.onstop = () => {
+      camStream.getTracks().forEach(tr => tr.stop());
+      pip.classList.add("hidden"); pip.srcObject = null;
+      const type = camRec.mimeType || mime || "video/mp4";
+      const dur = (Date.now() - camTime) / 1000;
+      camRec = null; drawTools();
+      if (dur < 0.5) return toast("Reste appuyé pour filmer");
+      const f = new File([new Blob(camChunks, { type })], "selfie." + (type.includes("mp4") ? "mp4" : "webm"), { type });
+      insertRushes([{ file: f, url: URL.createObjectURL(f), cam: true }]);
+    };
+    camRec.start(250);
+    camTime = Date.now();
+    drawTools();
+    if (navigator.vibrate) navigator.vibrate(15);
+  }
+  function stopCam() {
+    camWanted = false;
+    if (camRec && camRec.state !== "inactive") camRec.stop();
   }
 
   // ---------- Feuille (bas d'écran) ----------
