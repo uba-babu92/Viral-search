@@ -102,7 +102,7 @@
   // ---------- Interface ----------
   document.body.insertAdjacentHTML("beforeend", `
   <div id="ed" class="hidden">
-    <div class="etop"><button id="edClose">${ic("x", 26)}</button><span class="grow"></span><span class="epill">1080p</span><button id="edExport">Exporter</button></div>
+    <div class="etop"><button id="edClose">${ic("x", 26)}</button><span class="grow" id="edProxy" style="font-size:12px;color:#888"></span><span class="epill">1080p</span><button id="edExport">Exporter</button></div>
     <div class="eprev"><div class="stage" id="edStage">
       <canvas id="edCanvas"></canvas>
       <div id="edOvs"></div><div id="edCap" class="hidden"></div>
@@ -396,11 +396,39 @@
       const m = { input, dur: await input.computeDuration().catch(() => 5) };
       m.v = v && await v.canDecode().catch(() => false) ? v : null;
       m.a = a && await a.canDecode().catch(() => false) ? a : null;
-      if (m.v) m.prev = new MB.CanvasSink(m.v, { width: PW, height: PH, fit: "contain", poolSize: 16 });
+      if (m.v) { m.prev = new MB.CanvasSink(m.v, { width: PW, height: PH, fit: "contain", poolSize: 16 }); m.off = 0; }
       ref._m = m;
+      if (m.v) buildProxy(ref, m, blob);   // copie légère pour un aperçu fluide
       decodeAudio(ref);   // le son se prépare en arrière-plan
       return m;
     })());
+  }
+  // ---------- Proxys : copie légère de chaque vidéo pour l'aperçu (l'export garde l'original) ----------
+  let proxyQueue = Promise.resolve(), proxyTodo = 0, proxyDone = 0;
+  function proxyLabel() { $("edProxy").textContent = proxyTodo > proxyDone ? `Préparation de l'aperçu ${proxyDone + 1}/${proxyTodo}…` : ""; }
+  function buildProxy(ref, m, blob) {
+    proxyTodo++; proxyLabel();
+    proxyQueue = proxyQueue.then(async () => {
+      try {
+        const input = new MB.Input({ source: new MB.BlobSource(blob), formats: MB.ALL_FORMATS });
+        const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: "in-memory" }), target: new MB.BufferTarget() });
+        const conv = await MB.Conversion.init({ input, output,
+          video: { width: PW, height: PH, fit: "contain", frameRate: FPS, codec: "avc", bitrate: 1.2e6, keyFrameInterval: 0.5, forceTranscode: true },
+          audio: { discard: true } });
+        if (!conv.isValid) throw new Error("proxy impossible");
+        conv.onProgress = pr => { $("edProxy").textContent = `Préparation de l'aperçu ${proxyDone + 1}/${proxyTodo}… ${Math.round(pr * 100)} %`; };
+        await conv.execute();
+        input.dispose && input.dispose();
+        const pin = new MB.Input({ source: new MB.BlobSource(new Blob([output.target.buffer], { type: "video/mp4" })), formats: MB.ALL_FORMATS });
+        const pv = await pin.getPrimaryVideoTrack();
+        const off = (await pv.getFirstTimestamp().catch(() => 0)) - (await m.v.getFirstTimestamp().catch(() => 0));
+        m.prev = new MB.CanvasSink(pv, { width: PW, height: PH, fit: "contain", poolSize: 16 });
+        m.off = off;
+        m.proxy = true;
+        if (!playing) { closeFeeds(); renderStill(t); }
+      } catch (e) { /* on garde l'original pour l'aperçu */ }
+      proxyDone++; proxyLabel();
+    });
   }
   async function mediaDuration(ref) {
     if (ref.dur) return ref.dur;
@@ -431,11 +459,11 @@
 
   // Flux d'images d'un élément (plan ou superposition), décodées à l'avance
   class Feed {
-    constructor(sink, item, k0) {
-      this.k0 = k0; this.k = -1; this.q = []; this.cur = null; this.done = false; this.busy = false;
+    constructor(sink, item, k0, off = 0) {
+      this.sink = sink; this.k0 = k0; this.k = -1; this.q = []; this.cur = null; this.done = false; this.busy = false;
       const self = this;
       this.it = sink.canvasesAtTimestamps((function* () {
-        for (let k = k0; ; k++) { const ts = item.in + (k / FPS) * sp(item); if (ts >= item.out || self.done) return; yield ts; }
+        for (let k = k0; ; k++) { const ts = item.in + (k / FPS) * sp(item); if (ts >= item.out || self.done) return; yield ts + off; }
       })());
       this.pump();
     }
@@ -459,9 +487,9 @@
     const m = item.ref && item.ref._m;
     if (!m || !m.prev) return null;
     let f = feeds.get(item);
-    if (!f || kAbs < f.k0 + f.k || kAbs - (f.k0 + Math.max(0, f.k)) > 20) {   // trop loin : on recommence ici
+    if (!f || f.sink !== m.prev || kAbs < f.k0 + f.k || kAbs - (f.k0 + Math.max(0, f.k)) > 20) {   // trop loin : on recommence ici
       if (f) f.close();
-      f = new Feed(m.prev, item, Math.max(0, kAbs));
+      f = new Feed(m.prev, item, Math.max(0, kAbs), m.off || 0);
       feeds.set(item, f);
     }
     return f;
@@ -509,14 +537,14 @@
     if (i < 0) { vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH); return; }
     const c = clips[i];
     const m = await media(c.ref).catch(() => null);
-    const w = m && m.prev ? await m.prev.getCanvas(c.in + off * sp(c)).catch(() => null) : null;
+    const w = m && m.prev ? await m.prev.getCanvas(c.in + off * sp(c) + (m.off || 0)).catch(() => null) : null;
     const ovs = [];
     for (const o of overlays) {
       if (time < o.start || time >= o.start + len(o)) continue;
       const mo = await media(o.ref).catch(() => null);
       if (!mo) continue;
       if (mo.image) ovs.push([mo.image, o]);
-      else if (mo.prev) { const wo = await mo.prev.getCanvas(o.in + (time - o.start) * sp(o)).catch(() => null); if (wo) ovs.push([wo.canvas, o]); }
+      else if (mo.prev) { const wo = await mo.prev.getCanvas(o.in + (time - o.start) * sp(o) + (mo.off || 0)).catch(() => null); if (wo) ovs.push([wo.canvas, o]); }
     }
     if (my !== stillToken) return;
     vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH);
