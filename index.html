@@ -418,16 +418,6 @@ async function renderTimeline(timeline, say) {
   throw new Error("rendu trop long, réessaie");
 }
 
-// Demande un rendu à Shotstack et attend la vidéo finale
-async function shotRender(srcs, captions) {
-  const font = { family: "Montserrat ExtraBold", size: 64, color: "#ffffff", lineHeight: 0.9 };
-  const background = { color: "#000000", opacity: 0.6, padding: 20, borderRadius: 16 };
-  const videoTrack = { clips: srcs.map((src, i) => ({ asset: { type: "video", src }, start: i ? "auto" : 0, length: "auto", alias: `v${i}` })) };
-  const captionTrack = { clips: srcs.map((_, i) => ({ asset: { type: "caption", src: `alias://v${i}`, font, background },
-    start: `alias://v${i}`, length: `alias://v${i}`, position: "center" })) };
-  mStatus("3/4 Montage demandé" + (captions ? " (avec sous-titres)…" : "…"));
-  return renderTimeline({ tracks: captions ? [captionTrack, videoTrack] : [videoTrack] }, t => mStatus("4/4 " + t));
-}
 
 async function relay(path, data) {
   const res = await fetch(RELAY + path, data === undefined ? {} : {
@@ -438,40 +428,9 @@ async function relay(path, data) {
   return JSON.parse(txt);
 }
 
-document.getElementById("montageGo").addEventListener("click", async () => {
-  const files = rushes.map(r => r.file);
-  const list = rushes.slice();
-  let noCaption = false;
-  const btn = document.getElementById("montageGo");
-  if (!files.length) return;
-  btn.disabled = true;
-  document.getElementById("montageResult").innerHTML = "";
-  try {
-    // 1-2. Envoi de chaque vidéo chez Shotstack
-    const srcs = [];
-    for (let n = 0; n < list.length; n++) srcs.push(await uploadRush(list[n], `vidéo ${n + 1}/${list.length}`, mStatus));
-
-    // 3-4. Montage, d'abord avec sous-titres. Si pas de voix : on refait sans.
-    let url;
-    try {
-      url = await shotRender(srcs, true);
-    } catch (e) {
-      if (!/spoken|speech|audio/i.test(e.message)) throw e;
-      mStatus("Pas de voix trouvée : je refais le montage sans sous-titres…");
-      url = await shotRender(srcs, false);
-      noCaption = true;
-    }
-    mStatus(noCaption ? "✅ Terminé (sans sous-titres : pas de voix détectée)." : "✅ Terminé !");
-    document.getElementById("montageResult").innerHTML =
-      `<video src="${url}" controls playsinline style="width:100%;border-radius:8px"></video>
-       <a class="small" href="${url}" target="_blank" rel="noopener">Ouvrir / télécharger la vidéo</a>
-       <button class="main alt" style="margin-top:8px" onclick="openEditor([{ url: '${url}', src: '${url}', file: { name: 'Montage IA' } }])">✂️ Retoucher dans la table de montage</button>`;
-    return;
-  } catch (e) {
-    mStatus("❌ " + e.message);
-  } finally {
-    btn.disabled = false;
-  }
+document.getElementById("montageGo").addEventListener("click", () => {
+  if (!rushes.length) return;
+  openEditor(rushes.slice(), { captions: true, message: "🤖 Montage IA : plans à la suite + sous-titres auto. Retouche, puis Exporter." });
 });
 
 // ----- Script : coach d'écriture IA (via le relais) -----
