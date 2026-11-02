@@ -414,7 +414,8 @@ async function uploadRush(r, tag, say) {
 
 // Envoie un montage (timeline Shotstack) et attend la vidéo finale
 async function renderTimeline(timeline, say) {
-  const r = await relay("/shotstack/render", { timeline, output: { format: "mp4", size: { width: 1080, height: 1920 } } });
+  // Qualité maximale, couleurs standard (pas de HDR)
+  const r = await relay("/shotstack/render", { timeline, output: { format: "mp4", size: { width: 1080, height: 1920 }, fps: 30, quality: "high" } });
   for (let i = 0; i < 200; i++) {
     await sleep(4000);
     const st = (await relay("/shotstack/render/" + r.response.id)).response;
@@ -437,11 +438,11 @@ async function relay(path, data) {
 
 document.getElementById("montageGo").addEventListener("click", () => {
   if (!rushes.length) return;
-  openEditor(rushes.slice(), { captions: true, message: "🤖 Montage IA : plans à la suite + sous-titres auto. Retouche, puis Exporter." });
+  openEditor(rushes.slice(), { captions: true });
 });
 
-// ----- Script : coach d'écriture IA (Mistral, via le relais) -----
-const AI_MODEL = "mistral-small-latest";
+// ----- Script : coach d'écriture IA (Groq, via le relais) -----
+const AI_MODEL = "llama-3.3-70b-versatile"; // Groq (gratuit)
 const RULES = `Règles d'un bon script de vidéo courte (TikTok, Reels) :
 - Accroche dans les 2 premières secondes : une phrase choc, une question ou une promesse.
 - Rythme rapide : phrases courtes, une idée par plan, une relance toutes les 3 à 5 secondes.

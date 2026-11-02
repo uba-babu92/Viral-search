@@ -9,8 +9,8 @@
 ## Montage façon CapCut (prochaine étape)
 - Après Film → « Suivant » : 🤖 Montage IA (puis retouche dans l'éditeur) ou ✂️ Table de montage directe.
 - Éditeur simple : vidéos (couper, déplacer), sons/musique, voix off, superpositions. Export via Shotstack.
-- Fait : couper, glisser (appui long), rallonger/raccourcir, effets sonores, import son/musique, voix off, sous-titres auto IA, export.
-- À faire : superpositions, volume, textes modifiables (vrais mots des sous-titres).
+- Fait : couper, glisser (appui long), rallonger/raccourcir, vitesse x0,5 à x100, volume par élément, bruitages perso (gardés sur le téléphone), voix off en appui maintenu, légendes façon TikTok (Groq Whisper) modifiables et déplaçables, superpositions (vidéo/image), lecture sans noir ni latence, export qualité haute.
+- À tester en vrai : vitesse et textes chez Shotstack.
 - Appli iPhone native (compte développeur Apple 99 $/an) si la caméra web ne suffit pas.
 - S'inspirer de l'ergonomie de CapCut (timeline, pistes, sous-titres animés, textes, coupes).
 - Pas de copie du code de CapCut : on reconstruit avec des outils libres.
@@ -23,7 +23,7 @@
 
 ## À faire lundi (par toi)
 - Cloudflare : recopier relay/worker.js dans viral-relais puis Déployer (pour la transcription).
-- Clé IA : créer une clé Mistral (console.mistral.ai, plan gratuit Experiment) et la mettre dans AI_KEY sur Cloudflare.
+- Clé IA : Groq (gratuit) dans AI_KEY sur Cloudflare. Sert au coach Script ET aux légendes.
 - Apify : regarder le prix et les options (« vues minimum », « tri par popularité ») du scraper mu0i.
 
 ## Baisser le prix de la recherche

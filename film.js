@@ -174,7 +174,7 @@
     return clips.map((c, i) => new File([c.blob], `plan-${stamp}-${i + 1}.${ext}`, { type: c.blob.type }));
   }
   function toMontage() {
-    files().forEach(f => rushes.push({ file: f, url: URL.createObjectURL(f) }));
+    files().forEach(f => rushes.push({ file: f, url: URL.createObjectURL(f), cam: true })); // cam : on coupera l'image figée du début
     clips.length = 0;
     close();
     setRubrique("montage");

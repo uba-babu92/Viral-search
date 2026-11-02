@@ -1,5 +1,5 @@
 // Relais sécurisé : les clés restent dans Cloudflare (variables), jamais dans la page.
-// Variables : APIFY_KEY, SHOTSTACK_KEY, SHOTSTACK_ENV ("stage" pour tester, "v1" pour le vrai), AI_KEY (clé Mistral).
+// Variables : APIFY_KEY, SHOTSTACK_KEY, SHOTSTACK_ENV ("stage" pour tester, "v1" pour le vrai), AI_KEY (clé Groq).
 const ALLOWED_ORIGIN = "https://uba-babu92.github.io";
 // Seuls ces scrapers Apify sont autorisés
 const APIFY_ACTORS = ["mu0i~tiktok-search-scraper", "scrapingmonkey~tiktok-scraper"];
@@ -33,14 +33,21 @@ export default {
 
     const stage = env.SHOTSTACK_ENV || "stage";
     const shot = { "x-api-key": env.SHOTSTACK_KEY, "Content-Type": "application/json" };
-    const body = request.method === "POST" ? await request.text() : undefined;
+    const body = request.method === "POST" && p !== "/transcribe" ? await request.text() : undefined;
     let m, upstream;
 
     if (p === "/ai" && request.method === "POST") {
-      upstream = await fetch("https://api.mistral.ai/v1/chat/completions", {
+      upstream = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Authorization": `Bearer ${env.AI_KEY}`, "Content-Type": "application/json" },
         body,
+      });
+    } else if (p === "/transcribe" && request.method === "POST") {
+      // Transcription audio (légendes) avec Groq Whisper : le fichier passe tel quel
+      upstream = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${env.AI_KEY}`, "Content-Type": request.headers.get("Content-Type") },
+        body: request.body,
       });
     } else if ((m = p.match(/^\/apify\/([\w~.-]+)$/)) && request.method === "POST" && APIFY_ACTORS.includes(m[1])) {
       upstream = await fetch(`https://api.apify.com/v2/acts/${m[1]}/run-sync-get-dataset-items`, {
