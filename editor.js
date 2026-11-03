@@ -4,7 +4,7 @@
 // Sons : bibliothèque de bruitages perso (gardée sur le téléphone) + voix off (appui maintenu).
 // Légendes façon TikTok (transcription Groq Whisper), superpositions. Lecture sans écran noir ni latence.
 (() => {
-  const PPS = 60;                                    // pixels par seconde
+  let PPS = 60;                                      // pixels par seconde (pincer la ligne du temps pour zoomer)
   const RULER_H = 20, VIDEO_Y = 24, VIDEO_H = 56, ROW_H = 30;
   const CAP_RATIO = 0.045;                           // taille du texte des légendes / hauteur de la vidéo
   const $ = id => document.getElementById(id);
@@ -73,7 +73,7 @@
   .eclip span, .eit span { position: absolute; left: 5px; bottom: 2px; font-size: 10px; color: #fff; text-shadow: 0 1px 2px #000; white-space: nowrap; overflow: hidden; max-width: calc(100% - 8px); }
   .eclip em { position: absolute; right: 4px; top: 2px; font-size: 10px; font-style: normal; background: #000a; color: #fff; padding: 0 4px; border-radius: 3px; }
   .eclip.sel, .eit.sel { border-color: #fff; }
-  .eit.sel { touch-action: none; }   /* sélectionné : on le glisse directement */
+  .eit.sel, .eclip.sel { touch-action: none; }   /* sélectionné : on le glisse directement */
   .eclip.drag, .eit.drag { transition: none; z-index: 5; opacity: .85; transform: scale(1.04); box-shadow: 0 6px 18px #000; }
   .ehandle { position: absolute; top: -2px; bottom: -2px; width: 14px; background: #fff; touch-action: none; display: flex; align-items: center; justify-content: center; color: #000; font-size: 12px; font-weight: 700; z-index: 3; }
   .ehandle.l { left: -12px; border-radius: 4px 0 0 4px; } .ehandle.r { right: -12px; border-radius: 0 4px 4px 0; }
@@ -277,9 +277,8 @@
     return o;
   }
   // « Sur la clé » = à moins de 10 pixels d'elle sur la ligne du temps (comme CapCut) : on modifie cette clé
-  const KF_SNAP = 10 / PPS;
   const kfNear = (it, local) => {
-    let best = -1, d = KF_SNAP;
+    let best = -1, d = 10 / PPS;
     (it.kf || []).forEach((k, j) => { const e = Math.abs(k.t - local); if (e <= d) { d = e; best = j; } });
     return best;
   };
@@ -336,9 +335,10 @@
     inner.style.height = y + 6 + "px";
 
     let ruler = "";
-    for (let s = 0; s <= Math.floor(tot); s += 2) {
+    const step = [1, 2, 5, 10, 15, 30, 60].find(v => v * PPS >= 90) || 120;   // graduations lisibles quel que soit le zoom
+    for (let s = 0; s <= Math.floor(tot); s += step) {
       ruler += `<span style="left:${h + s * PPS}px">${fmt(s)}</span>`;
-      if (s + 1 <= tot) ruler += `<i style="left:${h + (s + 1) * PPS - 1}px"></i>`;
+      if (s + step / 2 <= tot) ruler += `<i style="left:${h + (s + step / 2) * PPS - 1}px"></i>`;
     }
     $("edRuler").innerHTML = ruler;
 
@@ -1259,8 +1259,28 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
   // ---------- Gestes : toucher, appui long pour déplacer, poignées ----------
   let dragging = null, press = null;
   // iPhone : dès qu'on touche un élément sélectionné (ou une poignée), la ligne du temps ne défile plus, on déplace l'élément (comme CapCut)
-  tl.addEventListener("touchstart", e => { if (e.target.closest(".eit.sel, .ehandle")) e.preventDefault(); }, { passive: false });
-  tl.addEventListener("touchmove", e => { if (dragging || (press && (press.picked || press.held))) e.preventDefault(); }, { passive: false });
+  let pinch = null;
+  tl.addEventListener("touchstart", e => {
+    if (e.touches.length === 2) {   // deux doigts : zoom de la ligne du temps
+      const [a, b] = e.touches;
+      if (press) { clearTimeout(press.timer); press = null; }
+      pinch = { d0: Math.abs(a.clientX - b.clientX) || 1, pps0: PPS, at: t };
+      e.preventDefault(); return;
+    }
+    if (e.target.closest(".eit.sel, .eclip.sel, .ehandle")) e.preventDefault();
+  }, { passive: false });
+  let pinchRaf = 0;
+  tl.addEventListener("touchmove", e => {
+    if (pinch && e.touches.length === 2) {
+      e.preventDefault();
+      const [a, b] = e.touches;
+      PPS = Math.min(400, Math.max(6, pinch.pps0 * (Math.abs(a.clientX - b.clientX) || 1) / pinch.d0));
+      if (!pinchRaf) pinchRaf = requestAnimationFrame(() => { pinchRaf = 0; draw(); setScroll(pinch ? pinch.at : t); });
+      return;
+    }
+    if (dragging || (press && (press.picked || press.held))) e.preventDefault();
+  }, { passive: false });
+  tl.addEventListener("touchend", e => { if (pinch && e.touches.length < 2) { const at = pinch.at; pinch = null; draw(); setScroll(at); } }, { passive: true });
 
   items.addEventListener("pointerdown", e => {
     const ph = e.target.closest(".eph");
@@ -1272,7 +1292,8 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     if (kfEl) { e.preventDefault(); pause(); sel = { type: kind, i }; seek(startOfItem(kind, i) + +kfEl.dataset.kt); draw(); return; }
     const handle = e.target.closest(".ehandle");
     if (handle) { e.preventDefault(); return startTrim(e, kind, i, handle.dataset.h); }
-    const picked = kind !== "v" && sel && sel.type === kind && sel.i === i;
+    if (pinch) return;
+    const picked = sel && sel.type === kind && sel.i === i;   // déjà sélectionné : on le glisse tout de suite (plans : changer l'ordre)
     press = { x: e.clientX, y: e.clientY, kind, i, moved: false, picked };
     if (picked) e.preventDefault();
     press.timer = setTimeout(() => { if (press && !press.moved) { press.held = true; startMove(press); } }, 300);
