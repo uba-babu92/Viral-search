@@ -50,3 +50,9 @@
 - Chaque animation = un bloc violet dans la ligne du temps : déplacer / agrandir / tourner sur l'aperçu, caler dans le temps, dupliquer, supprimer. « Modifier (IA) » pour la changer.
 - Assistant IA : bouton « Créer une animation avec Claude ».
 - Si Claude ne répond pas, l'IA gratuite (Groq) prend le relais.
+
+## Coach « Créer » expert viralité (fait)
+- Trouve la niche, cherche les vidéos virales (Apify, 60 vidéos), écoute les 8 meilleures, puis Claude écrit le script en reprenant des hooks qui ont marché (vidéo source citée) + 2 hooks alternatifs.
+- Mémoire par niche 14 jours (pas de nouvelle recherche payante), ou réutilise la dernière recherche.
+- « Adapter » inchangé (part de la vidéo déjà analysée).
+- À faire : brouillons de montage, DA rose + typo Anton (typo validée, couleurs à revoir).

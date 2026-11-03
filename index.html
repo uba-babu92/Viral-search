@@ -181,6 +181,7 @@
   </div>
   <div id="boxCreer">
     <textarea id="ideaText" placeholder="Ton idée (ex : vlog de vacances dans les Vosges avec mon pote)"></textarea>
+    <label id="useLastBox" class="small hidden" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="useLast" checked style="width:auto;margin:0"> <span>S'appuyer sur ma dernière recherche « <span id="useLastQ"></span> »</span></label>
     <button class="main" id="creerGo">Créer mon script</button>
   </div>
   <div id="boxAdapter" class="hidden">
@@ -520,7 +521,7 @@ async function askClaude(system, user, onText) {
   const res = await fetch(RELAY + "/claude", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 32000, stream: true, output_config: { effort: "medium" },
-      system, messages: [{ role: "user", content: user }] }),
+      system, messages: Array.isArray(user) ? user : [{ role: "user", content: user }] }),
   });
   if (!res.ok) {
     const t = await res.text();
@@ -590,6 +591,75 @@ document.getElementById("modeCreer").onclick = () => setScriptMode("creer");
 document.getElementById("modeAdapter").onclick = () => setScriptMode("adapter");
 document.getElementById("newScript").onclick = e => { e.preventDefault(); resetChat(); };
 
+// ----- Coach « Créer » : il s'appuie sur de vraies vidéos virales de la niche -----
+const VIRAL_EXPERT = `Tu es le meilleur expert de la viralité sur TikTok et Reels : tu as décortiqué des milliers de vidéos virales et tu sais exactement pourquoi une vidéo explose.
+Tu maîtrises : le hook des 2 premières secondes (curiosité, contradiction, promesse chiffrée, « POV », erreur à éviter, avant / après, question qui pique, affirmation polémique), la rétention (boucle ouverte, relance toutes les 3 à 5 secondes, révélation retardée), l'émotion, la preuve sociale, et la fin qui boucle ou pousse à commenter, partager, s'abonner.
+On te donne l'idée de l'utilisateur et des VIDÉOS VIRALES RÉELLES de sa niche (vues, description, ce qui est dit).
+Méthode obligatoire :
+1. ANALYSE (court) : les 3 vidéos les plus fortes, une ligne chacune : vues, hook exact, type de hook, structure, pourquoi ça marche.
+2. SCRIPT : écris le script de l'utilisateur en REPRENANT la mécanique d'un hook qui a prouvé qu'il marche (adapté à son idée, jamais copié mot pour mot) et une structure éprouvée de ces vidéos. Ne pars jamais de rien : chaque choix s'appuie sur ces vidéos. Indique entre crochets quelle vidéo a inspiré le hook, par exemple [hook inspiré de la vidéo 2, 1,2 M vues].
+3. HOOKS ALTERNATIFS : 2 autres hooks, chacun inspiré d'une autre vidéo de la liste.
+Si aucune vidéo n'est fournie, appuie-toi sur les formats de hooks viraux éprouvés que tu connais.
+Tu tutoies, tu es direct et motivant. Pour une correction, renvoie le script complet corrigé.
+
+${RULES}`;
+let lastSearch = { q: "", items: [] };
+function showUseLast() {
+  document.getElementById("useLastBox").classList.toggle("hidden", !lastSearch.items.length);
+  document.getElementById("useLastQ").textContent = lastSearch.q;
+}
+// Ce qui est dit dans une vidéo : sous-titres TikTok, sinon Groq écoute la vidéo
+async function videoSaid(v) {
+  let tx = await getTranscript(v).catch(() => "");
+  if (tx) return tx;
+  const r = await fetch(`${RELAY}/tiktok-video?url=${encodeURIComponent(v.url)}`);
+  if (!r.ok) return "";
+  return (await transcribeBlob(await r.blob()).catch(() => "")) || "";
+}
+// Trouve et écoute les meilleures vidéos virales de la niche (gardées en mémoire 14 jours par niche)
+async function viralRefs(idea, st) {
+  let q = "", pool = null;
+  if (lastSearch.items.length && document.getElementById("useLast").checked) { q = lastSearch.q; pool = lastSearch.items; }
+  else {
+    st.textContent = "Je trouve ta niche…";
+    try {
+      q = (await askModel([{ role: "system", content: "Réponds uniquement par 1 à 3 mots-clés de recherche TikTok qui décrivent la niche de cette idée, en minuscules, sans hashtag ni ponctuation, dans la langue de l'idée." }, { role: "user", content: idea }]))
+        .split("\n")[0].replace(/[#"«».,;:!?]/g, "").trim().slice(0, 40);
+    } catch (e) { /* on garde l'idée */ }
+    q ||= idea.split(/\s+/).slice(0, 3).join(" ");
+  }
+  const key = q.toLowerCase();
+  let lib = {};
+  try { lib = JSON.parse(localStorage.getItem("hookLib") || "{}"); } catch (e) {}
+  if (!pool && lib[key] && Date.now() - lib[key].at < 14 * 864e5) { st.textContent = `Hooks « ${q} » déjà analysés : je les réutilise.`; return { q, refs: lib[key].refs }; }
+  if (!pool) {
+    st.textContent = `Recherche des vidéos virales « ${q} » (environ 1 min)…`;
+    const data = await runActor(VIDEO_ACTOR, { queries: [q], maxVideos: 60 });
+    pool = data.map(normalize);
+  }
+  const top = pool.filter(v => !(v.views > 0) || v.views >= MIN_VIEWS).sort((a, b) => b.views - a.views).slice(0, 8);
+  let done = 0;
+  st.textContent = `${top.length} vidéos virales trouvées, je les écoute…`;
+  const said = new Array(top.length).fill("");
+  let next = 0;
+  await Promise.all([0, 1, 2, 3].map(async () => {
+    while (next < top.length) {
+      const k = next++;
+      try { said[k] = await videoSaid(top[k]); } catch (e) {}
+      st.textContent = `${++done} / ${top.length} vidéos écoutées…`;
+    }
+  }));
+  const refs = top.map((v, k) => ({ views: v.views, likes: v.likes, duration: v.duration, url: v.url, text: String(v.text || "").slice(0, 220), said: said[k].slice(0, 800) }));
+  if (refs.length) {
+    lib[key] = { at: Date.now(), refs };
+    const keys = Object.keys(lib).sort((a, b) => lib[b].at - lib[a].at);
+    keys.slice(30).forEach(k => delete lib[k]);
+    try { localStorage.setItem("hookLib", JSON.stringify(lib)); } catch (e) {}
+  }
+  st.textContent = "Le coach analyse les hooks et écrit ton script…";
+  return { q, refs };
+}
+
 // Depuis Recherche : envoie la vidéo virale dans « Adapter »
 function adaptVideo(i) {
   const v = items[i];
@@ -619,13 +689,17 @@ function addMsg(text, me) {
 
 async function askAI(content, shown) {
   const st = document.getElementById("scriptStatus");
-  if (!chat.length) chat.push({ role: "system", content: PROMPTS[scriptMode] });
+  if (!chat.length && scriptMode !== "creer") chat.push({ role: "system", content: PROMPTS[scriptMode] });
   chat.push({ role: "user", content });
-  addMsg(shown, true);
+  if (shown) addMsg(shown, true);
   document.querySelectorAll("#creerGo, #adapterGo, #replyGo").forEach(b => b.disabled = true);
   st.textContent = "Le coach écrit…";
   try {
-    const answer = await askModel(chat);
+    let answer;
+    if (scriptMode === "creer") {   // Claude, expert de la viralité (l'IA gratuite prend le relais s'il ne répond pas)
+      try { answer = await askClaude(VIRAL_EXPERT, chat); }
+      catch (e) { st.textContent = "Claude indisponible, l'IA gratuite prend le relais…"; answer = await askModel([{ role: "system", content: VIRAL_EXPERT }, ...chat]); }
+    } else answer = await askModel(chat);
     chat.push({ role: "assistant", content: answer });
     addMsg(answer, false);
     st.textContent = "";
@@ -638,11 +712,28 @@ async function askAI(content, shown) {
   }
 }
 
-document.getElementById("creerGo").onclick = () => {
+document.getElementById("creerGo").onclick = async () => {
   const idea = document.getElementById("ideaText").value.trim();
-  if (!idea) { document.getElementById("scriptStatus").textContent = "Écris d'abord ton idée."; return; }
+  const st = document.getElementById("scriptStatus");
+  if (!idea) { st.textContent = "Écris d'abord ton idée."; return; }
   resetChat();
-  askAI("Mon idée : " + idea, idea);
+  addMsg(idea, true);
+  const btns = document.querySelectorAll("#creerGo, #adapterGo, #replyGo");
+  btns.forEach(b => b.disabled = true);
+  let refs = [], q = "";
+  try { ({ refs, q } = await viralRefs(idea, st)); }
+  catch (e) { st.textContent = "Recherche des vidéos virales impossible (" + String(e.message).slice(0, 80) + ") : le coach s'appuie sur les hooks qu'il connaît."; }
+  btns.forEach(b => b.disabled = false);
+  if (refs.length) {
+    const note = document.createElement("div");
+    note.className = "small";
+    note.textContent = `Basé sur ${refs.length} vidéos virales « ${q} » (${fmtNum(refs[refs.length - 1].views)} à ${fmtNum(refs[0].views)} vues), dont ${refs.filter(r => r.said).length} écoutées.`;
+    document.getElementById("chat").appendChild(note);
+  }
+  const list = refs.map((r, k) => `VIDÉO ${k + 1} — ${fmtNum(r.views)} vues, ${fmtNum(r.likes)} likes${r.duration ? ", " + fmtDuration(r.duration) : ""}
+Description : ${r.text || "(vide)"}
+Ce qui est dit : ${r.said || "(pas de transcription)"}`).join("\n\n");
+  askAI(`Mon idée : ${idea}\n\n${refs.length ? `Vidéos virales réelles de ma niche (« ${q} »), de la plus vue à la moins vue :\n\n${list}` : "Aucune vidéo trouvée : appuie-toi sur les formats de hooks viraux éprouvés."}`, "");
 };
 document.getElementById("adapterGo").onclick = () => {
   const viral = document.getElementById("viralText").value.trim();
@@ -811,6 +902,7 @@ async function search(qArg) {
     status.textContent = `${items.length} résultat(s) à ${fmtNum(MIN_VIEWS)} vues ou plus (sur ${data.length} trouvés).`
       + (items.length < WANTED ? " Sujet un peu petit : essaie un mot-clé plus large." : "");
     render(items);
+    if (searchType === "videos" && items.length) { lastSearch = { q, items: items.slice(0, 30) }; showUseLast(); }
   } catch (err) {
     status.textContent = "Échec : " + err.message;
   }
