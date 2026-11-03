@@ -352,15 +352,15 @@
       x += cw;
     });
     if (overlays.length) overlays.forEach((o, i) => html += itemHtml("o", o, i, ovY + ovL[i] * ROW_H, "ov", "Superposition", o.ref.thumb ? `background-image:url(${o.ref.thumb});` : ""));
-    else html += `<div class="eph" data-ph="ov" style="left:${h}px;top:${ovY}px;width:${w}px">+ Ajouter une superposition</div>`;
+    else html += `<div class="eph" data-ph="ov" style="left:${h}px;top:${ovY}px;width:${w}px"></div>`;
     if (effects.length) effects.forEach((x, i) => html += itemHtml("f", x, i, fxY + fxL[i] * ROW_H, "fx", "✦ " + (x.type === "gen" ? x.name || "Claude" : FX[x.type] ? FX[x.type].label : x.type)));
-    else html += `<div class="eph" data-ph="fx" style="left:${h}px;top:${fxY}px;width:${w}px">+ Ajouter un effet</div>`;
+    else html += `<div class="eph" data-ph="fx" style="left:${h}px;top:${fxY}px;width:${w}px"></div>`;
     if (texts.length) texts.forEach((x, i) => html += itemHtml("t", x, i, txY + txL[i] * ROW_H, "txt", "T  " + esc(x.text)));
-    else html += `<div class="eph" data-ph="txt" style="left:${h}px;top:${txY}px;width:${w}px">+ Ajouter un texte</div>`;
+    else html += `<div class="eph" data-ph="txt" style="left:${h}px;top:${txY}px;width:${w}px"></div>`;
     if (caps.length) caps.forEach((c, i) => html += itemHtml("c", c, i, capY, "cap", esc(c.text)));
-    else html += `<div class="eph" data-ph="cap" style="left:${h}px;top:${capY}px;width:${w}px">+ Générer des légendes</div>`;
+    else html += `<div class="eph" data-ph="cap" style="left:${h}px;top:${capY}px;width:${w}px"></div>`;
     audios.forEach((a, i) => html += itemHtml("a", a, i, auY + auL[i] * ROW_H, a.kind, esc(a.ref.label || "Son")));
-    html += `<div class="eph" data-ph="sound" style="left:${h}px;top:${auY + nl(auL) * ROW_H}px;width:${w}px">+ Ajouter un son</div>`;
+    html += `<div class="eph" data-ph="sound" style="left:${h}px;top:${auY + nl(auL) * ROW_H}px;width:${w}px"></div>`;
     items.innerHTML = html;
 
     $("edMute").innerHTML = `${ic(clipMute ? "mute" : "vol", 20)}<span>${clipMute ? "Son coupé" : "Son du clip"}</span>`;
@@ -1283,10 +1283,8 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
   tl.addEventListener("touchend", e => { if (pinch && e.touches.length < 2) { const at = pinch.at; pinch = null; draw(); setScroll(at); } }, { passive: true });
 
   items.addEventListener("pointerdown", e => {
-    const ph = e.target.closest(".eph");
-    if (ph) { press = { ph: ph.dataset.ph, x: e.clientX, y: e.clientY }; return; }
     const el = e.target.closest("[data-k]");
-    if (!el) return;
+    if (!el) { press = { empty: true, x: e.clientX, y: e.clientY }; return; }   // zone vide : toucher = tout désélectionner (comme CapCut)
     const kind = el.dataset.k, i = +el.dataset.i;
     const kfEl = e.target.closest(".ekf");
     if (kfEl) { e.preventDefault(); pause(); sel = { type: kind, i }; seek(startOfItem(kind, i) + +kfEl.dataset.kt); draw(); return; }
@@ -1308,11 +1306,7 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
   items.addEventListener("pointerup", () => {
     if (press && !press.moved && !dragging) {
       clearTimeout(press.timer);
-      if (press.ph === "sound") soundSheet();
-      else if (press.ph === "cap") captionSheet();
-      else if (press.ph === "ov") $("edOvFile").click();
-      else if (press.ph === "txt") textAddSheet();
-      else if (press.ph === "fx") fxSheet();
+      if (press.empty) { if (sel) { sel = null; draw(); } }
       else {
         const same = sel && sel.type === press.kind && sel.i === press.i;
         sel = same ? null : { type: press.kind, i: press.i };
