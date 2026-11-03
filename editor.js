@@ -1258,7 +1258,9 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
 
   // ---------- Gestes : toucher, appui long pour déplacer, poignées ----------
   let dragging = null, press = null;
-  tl.addEventListener("touchmove", e => { if (dragging) e.preventDefault(); }, { passive: false });
+  // iPhone : dès qu'on touche un élément sélectionné (ou une poignée), la ligne du temps ne défile plus, on déplace l'élément (comme CapCut)
+  tl.addEventListener("touchstart", e => { if (e.target.closest(".eit.sel, .ehandle")) e.preventDefault(); }, { passive: false });
+  tl.addEventListener("touchmove", e => { if (dragging || (press && (press.picked || press.held))) e.preventDefault(); }, { passive: false });
 
   items.addEventListener("pointerdown", e => {
     const ph = e.target.closest(".eph");
@@ -1273,10 +1275,10 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     const picked = kind !== "v" && sel && sel.type === kind && sel.i === i;
     press = { x: e.clientX, y: e.clientY, kind, i, moved: false, picked };
     if (picked) e.preventDefault();
-    press.timer = setTimeout(() => { if (press && !press.moved) startMove(press); }, 380);
+    press.timer = setTimeout(() => { if (press && !press.moved) { press.held = true; startMove(press); } }, 300);
   });
   items.addEventListener("pointermove", e => {
-    if (press && !dragging && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 8) {
+    if (press && !dragging && Math.hypot(e.clientX - press.x, e.clientY - press.y) > (press.picked ? 6 : 14)) {
       clearTimeout(press.timer);
       if (press.picked) { startMove(press, true); return; }   // son/légende déjà sélectionné : on le déplace tout de suite
       press.moved = true;
