@@ -626,8 +626,8 @@
   // ---------- Proxys : copie légère de chaque vidéo pour l'aperçu (l'export garde l'original) ----------
   let proxyTodo = 0, proxyDone = 0, proxyRunning = 0;
   const proxyWait = [];
-  // deux aperçus préparés en même temps (plus rapide sur iPhone)
-  const proxySlot = () => proxyRunning < 2 ? (proxyRunning++, Promise.resolve()) : new Promise(r => proxyWait.push(r));
+  // un aperçu à la fois (l'iPhone n'aime pas plusieurs encodages en même temps)
+  const proxySlot = () => proxyRunning < 1 ? (proxyRunning++, Promise.resolve()) : new Promise(r => proxyWait.push(r));
   const proxyFree = () => { const n = proxyWait.shift(); if (n) n(); else proxyRunning--; };
   const PXW = 360, PXH = 640;   // taille des copies d'aperçu
   function proxyLabel() { $("edProxy").textContent = proxyTodo > proxyDone ? `Préparation de l'aperçu… ${Math.round(proxyDone * 100 / proxyTodo)} %` : ""; }
@@ -643,13 +643,15 @@
           const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: "in-memory" }), target: new MB.BufferTarget() });
           const conv = await MB.Conversion.init({ input, output, video, audio: { discard: true } });
           if (!conv.isValid) throw new Error("proxy impossible");
-          conv.onProgress = pr => { const all = proxyTodo ? Math.round(proxyDone * 100 / proxyTodo) : 0; $("edProxy").textContent = `Préparation de l'aperçu… ${Math.min(99, all + Math.round(pr * 100 / proxyTodo))} %`; };
-          await conv.execute();
+          // garde-fou : si l'encodage n'avance plus pendant 12 s, on abandonne (l'aperçu se fait alors sur l'original)
+          let lastPr = performance.now();
+          const dog = setInterval(() => { if (performance.now() - lastPr > 12000) { clearInterval(dog); conv.cancel().catch(() => {}); } }, 2000);
+          conv.onProgress = pr => { lastPr = performance.now(); const all = proxyTodo ? Math.round(proxyDone * 100 / proxyTodo) : 0; $("edProxy").textContent = `Préparation de l'aperçu… ${Math.min(99, all + Math.round(pr * 100 / proxyTodo))} %`; };
+          try { await conv.execute(); } finally { clearInterval(dog); }
           input.dispose && input.dispose();
           return output.target.buffer;
         };
-        // encodeur matériel de l'iPhone si possible (plus rapide), sinon encodage normal
-        const buf = await run({ ...vopt, hardwareAcceleration: "prefer-hardware" }).catch(() => run(vopt));
+        const buf = await run(vopt);
         const pin = new MB.Input({ source: new MB.BlobSource(new Blob([buf], { type: "video/mp4" })), formats: MB.ALL_FORMATS });
         const pv = await pin.getPrimaryVideoTrack();
         const off = (await pv.getFirstTimestamp().catch(() => 0)) - (await m.v.getFirstTimestamp().catch(() => 0));
