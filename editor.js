@@ -612,10 +612,9 @@
       const blob = ref.file || await (await fetch(ref.url)).blob();
       const input = new MB.Input({ source: new MB.BlobSource(blob), formats: MB.ALL_FORMATS });
       const v = await input.getPrimaryVideoTrack().catch(() => null);
-      const a = await input.getPrimaryAudioTrack().catch(() => null);
       const m = { input, dur: await input.computeDuration().catch(() => 5) };
       m.v = v && await v.canDecode().catch(() => false) ? v : null;
-      m.a = a && await a.canDecode().catch(() => false) ? a : null;
+      m.a = await audioTrack(input);
       if (m.v) { m.prev = new MB.CanvasSink(m.v, { width: PW, height: PH, fit: "contain", poolSize: 10 }); m.off = 0; m.vt = m.v; }
       ref._m = m;
       if (m.v) buildProxy(ref, m, blob);   // copie légère pour un aperçu fluide
@@ -623,13 +622,20 @@
       return m;
     })());
   }
+  // Piste son lisible : les iPhone récents ajoutent une piste « audio spatial » illisible, on prend la piste stéréo
+  async function audioTrack(input) {
+    const p = await input.getPrimaryAudioTrack().catch(() => null);
+    if (p && await p.canDecode().catch(() => false)) return p;
+    for (const a of await input.getAudioTracks().catch(() => [])) if (await a.canDecode().catch(() => false)) return a;
+    return null;
+  }
   // ---------- Proxys : copie légère de chaque vidéo pour l'aperçu (l'export garde l'original) ----------
   let proxyTodo = 0, proxyDone = 0, proxyRunning = 0;
   const proxyWait = [];
   // un aperçu à la fois (l'iPhone n'aime pas plusieurs encodages en même temps)
   const proxySlot = () => proxyRunning < 1 ? (proxyRunning++, Promise.resolve()) : new Promise(r => proxyWait.push(r));
   const proxyFree = () => { const n = proxyWait.shift(); if (n) n(); else proxyRunning--; };
-  const PXW = 360, PXH = 640;   // taille des copies d'aperçu
+  const PXW = 288, PXH = 512;   // taille des copies d'aperçu
   function proxyLabel() { $("edProxy").textContent = proxyTodo > proxyDone ? `Préparation de l'aperçu… ${Math.round(proxyDone * 100 / proxyTodo)} %` : ""; }
   // Dès qu'un rush est ajouté (page Montage ou caméra), son aperçu se prépare déjà en arrière-plan
   window.prewarmMedia = ref => { if (ref && !ref.image && (ref.file || ref.url)) media(ref).catch(() => {}); };
@@ -637,7 +643,7 @@
     proxyTodo++; proxyLabel();
     proxySlot().then(async () => {
       try {
-        const vopt = { width: PXW, height: PXH, fit: "contain", frameRate: FPS, codec: "avc", bitrate: 1e6, keyFrameInterval: 0.5, forceTranscode: true };
+        const vopt = { width: PXW, height: PXH, fit: "contain", frameRate: FPS, codec: "avc", bitrate: 7e5, keyFrameInterval: 0.5, forceTranscode: true };
         const run = async video => {
           const input = new MB.Input({ source: new MB.BlobSource(blob), formats: MB.ALL_FORMATS });
           const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: "in-memory" }), target: new MB.BufferTarget() });
@@ -688,7 +694,7 @@
       }
       ref._abReady = out;
       return out;
-    })().catch(() => null));
+    })().catch(e => { console.warn("son", e); ref._ab = undefined; return null; }));   // échec : on réessaiera
   }
 
   // Flux d'images d'un élément (plan ou superposition), décodées à l'avance
@@ -2171,8 +2177,8 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
   window.transcribeBlob = async blob => {
     await loadMB();
     const input = new MB.Input({ source: new MB.BlobSource(blob), formats: MB.ALL_FORMATS });
-    const a = await input.getPrimaryAudioTrack();
-    if (!a || !(await a.canDecode())) throw new Error("pas de son lisible dans cette vidéo");
+    const a = await audioTrack(input);
+    if (!a) throw new Error("pas de son lisible dans cette vidéo");
     const dur = Math.min(600, await input.computeDuration());
     const SR = 16000, ctx = new OfflineAudioContext(1, Math.ceil(dur * SR) + 1, SR);
     for await (const w of new MB.AudioBufferSink(a).buffers(0, dur)) {
@@ -2744,13 +2750,15 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
     });
   }
   // Mélange final du son (48 kHz stéréo)
+  let mixMissing = 0;
   async function renderMix() {
+    mixMissing = 0;
     const SR = 48000, dur = total();
     const ctx = new OfflineAudioContext(2, Math.ceil(dur * SR), SR);
     const add = async (ref, startTl, bufIn, bufOut, rate, vol) => {
       if (!vol) return;
-      const buf = await decodeAudio(ref);
-      if (!buf) return;
+      const buf = (await decodeAudio(ref)) || (ref._m && ref._m.a ? await decodeAudio(ref) : null);   // 2e essai si le 1er a raté
+      if (!buf) { if (ref._m && ref._m.a) mixMissing++; return; }
       const s = ctx.createBufferSource(), g = ctx.createGain();
       s.buffer = buf; s.playbackRate.value = rate; g.gain.value = vol;
       s.connect(g).connect(ctx.destination);
@@ -2836,7 +2844,7 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
       await out.finalize();
       const file = new File([out.target.buffer], "montage.mp4", { type: "video/mp4" });
       const url = URL.createObjectURL(file);
-      sheet(`<div>Vidéo prête ! (${(file.size / 1e6).toFixed(1)} Mo)</div>
+      sheet(`<div>Vidéo prête ! (${(file.size / 1e6).toFixed(1)} Mo)</div>${mixMissing ? `<div class="small" style="color:#FF5A4E;margin:0">Le son de ${mixMissing} rush(s) n'a pas pu être lu. Réessaie l'export ; si ça recommence, envoie-moi la vidéo.</div>` : ""}
         <video src="${url}" controls playsinline style="width:100%;max-height:50vh;border-radius:8px;background:#000"></video>
         <button class="main" id="edSave">Enregistrer dans mes photos</button>
         <a style="display:block;text-align:center;color:#888;font-size:13px" href="${url}" download="montage.mp4">Télécharger le fichier</a>`);
