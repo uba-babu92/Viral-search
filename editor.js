@@ -229,16 +229,93 @@
 
   // ---------- Bibliothèque de bruitages (gardée dans le téléphone) ----------
   const DB = new Promise((ok, ko) => {
-    const r = indexedDB.open("viral-montage", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("sfx", { keyPath: "id", autoIncrement: true });
+    const r = indexedDB.open("viral-montage", 2);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      if (!d.objectStoreNames.contains("sfx")) d.createObjectStore("sfx", { keyPath: "id", autoIncrement: true });
+      if (!d.objectStoreNames.contains("projects")) d.createObjectStore("projects", { keyPath: "id" });   // projets (brouillons)
+      if (!d.objectStoreNames.contains("media")) d.createObjectStore("media", { keyPath: "mid" });        // fichiers des projets
+    };
     r.onsuccess = () => ok(r.result);
     r.onerror = () => ko(r.error);
   });
-  const store = async mode => (await DB).transaction("sfx", mode).objectStore("sfx");
+  const store = async (mode, name = "sfx") => (await DB).transaction(name, mode).objectStore(name);
   const req = r => new Promise((ok, ko) => { r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); });
   const libList = async () => req((await store("readonly")).getAll());
   const libAdd = async f => req((await store("readwrite")).add({ name: f.name.replace(/\.[^.]+$/, ""), type: f.type, blob: f }));
   const libDel = async id => req((await store("readwrite")).delete(id));
+
+
+  // ---------- Projets : chaque montage est enregistré sur le téléphone, et se rouvre tel quel ----------
+  let projId = null, projName = "", lastSaved = "", saving = false;
+  const PKEEP = ["name", "type", "image", "cam", "label", "lib", "kind"];
+  async function saveProject(force) {
+    if (saving || !clips.length || $("ed").classList.contains("hidden") && !force) return;
+    const state = snap();
+    if (state === lastSaved && !force) return;
+    saving = true;
+    try {
+      if (!projId) { projId = "p" + Date.now(); projName = "Projet du " + new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long" }) + " à " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }); }
+      const ms = await store("readwrite", "media");
+      for (const r of refs) {   // chaque fichier n'est copié qu'une fois
+        if (r.mid) continue;
+        const blob = r.file || (r.url ? await (await fetch(r.url)).blob() : null);
+        if (!blob) continue;
+        r.mid = "m" + Date.now() + Math.random().toString(36).slice(2, 7);
+        await req((await store("readwrite", "media")).put({ mid: r.mid, blob }));
+      }
+      let thumb = "";
+      try { const c = document.createElement("canvas"); c.width = 108; c.height = 192; c.getContext("2d").drawImage(view, 0, 0, 108, 192); thumb = c.toDataURL("image/jpeg", 0.7); } catch (e) {}
+      const old = await req((await store("readonly", "projects")).get(projId)).catch(() => null);
+      await req((await store("readwrite", "projects")).put({
+        id: projId, name: (old && old.name) || projName, created: (old && old.created) || Date.now(), updated: Date.now(), dur: total(), thumb: thumb || (old && old.thumb) || "",
+        refs: refs.map(r => { const o = { mid: r.mid, name: r.file ? r.file.name : r.label || "media" }; PKEEP.forEach(k => { if (r[k] !== undefined && typeof r[k] !== "object") o[k] = r[k]; }); if (r.file) o.type = r.file.type; return o; }),
+        state,
+      }));
+      lastSaved = state;
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    } catch (e) { console.warn("projet", e); }
+    saving = false;
+  }
+  setInterval(() => saveProject(false), 4000);   // enregistrement automatique
+  window.listProjects = async () => (await req((await store("readonly", "projects")).getAll())).sort((a, b) => b.updated - a.updated);
+  window.deleteProject = async id => {
+    const p = await req((await store("readonly", "projects")).get(id));
+    await req((await store("readwrite", "projects")).delete(id));
+    const others = await window.listProjects();
+    const used = new Set(others.flatMap(o => o.refs.map(r => r.mid)));
+    for (const r of (p && p.refs) || []) if (!used.has(r.mid)) await req((await store("readwrite", "media")).delete(r.mid)).catch(() => {});
+    if (projId === id) { projId = null; lastSaved = ""; }
+  };
+  window.renameProject = async (id, name) => { const p = await req((await store("readonly", "projects")).get(id)); if (!p) return; p.name = name; await req((await store("readwrite", "projects")).put(p)); };
+  window.duplicateProject = async id => { const p = await req((await store("readonly", "projects")).get(id)); if (!p) return; await req((await store("readwrite", "projects")).put({ ...p, id: "p" + Date.now(), name: p.name + " (copie)", created: Date.now(), updated: Date.now() })); };
+  window.openProject = async id => {
+    const p = await req((await store("readonly", "projects")).get(id));
+    if (!p) return;
+    pause();
+    const list = [];
+    for (const r of p.refs) {
+      const m = await req((await store("readonly", "media")).get(r.mid)).catch(() => null);
+      const blob = m ? m.blob : new Blob([]);
+      const file = new File([blob], r.name || "media", { type: r.type || blob.type });
+      const ref = { file, url: URL.createObjectURL(file), mid: r.mid };
+      PKEEP.forEach(k => { if (r[k] !== undefined && k !== "name" && k !== "type") ref[k] = r[k]; });
+      list.push(ref);
+    }
+    $("ed").classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+    refs = list; sel = null; past.length = future.length = 0; updUndo();
+    restore(p.state);
+    projId = p.id; projName = p.name; lastSaved = p.state;
+    // la page Montage retrouve les rushs de ce projet
+    try { rushes.length = 0; list.filter(r => clips.some(c => c.ref === r)).forEach(r => rushes.push(r)); if (typeof drawRushes === "function") drawRushes(); } catch (e) {}
+    for (const r of list) { media(r).catch(() => {}); makeThumbRef(r); }
+    resetPlayers(); draw(); seek(0);
+  };
+  async function makeThumbRef(r) {   // miniature de la ligne du temps
+    if (r.thumb || r.image) return;
+    try { const m = await media(r); if (!m.prev) return; const w = await m.prev.getCanvas(0.1); const c = document.createElement("canvas"); c.width = 60; c.height = 106; c.getContext("2d").drawImage(w.canvas, 0, 0, 60, 106); r.thumb = c.toDataURL("image/jpeg", 0.6); draw(); } catch (e) {}
+  }
 
   // ---------- Historique ----------
   const snap = () => JSON.stringify({ clips, audios, overlays, caps, texts, effects, capStyle, clipMute }, (k, v) => (k === "ref" ? refs.indexOf(v) : v));
@@ -272,6 +349,7 @@
       resetPlayers(); draw(); seek(Math.min(t, total()));
     } else {
       refs = []; clips = []; audios = []; overlays = []; caps = []; texts = []; effects = []; sel = null;
+      projId = null; lastSaved = "";   // nouveau projet
       capStyle = { x: 0.5, y: 0.7, size: 1, style: "box" }; clipMute = false;
       past.length = future.length = 0; updUndo();
       resetPlayers();
@@ -281,7 +359,7 @@
     if (opts.message) toast(opts.message, 4000);
     if (opts.ai) setTimeout(() => aiMontage(opts.prompt || ""), 300);   // Montage IA : écoute, coupe des blancs, légendes
   };
-  $("edClose").onclick = () => { pause(); $("ed").classList.add("hidden"); document.body.style.overflow = ""; };
+  $("edClose").onclick = () => { saveProject(true).then(() => { if (window.drawProjects && !$("secProjets").classList.contains("hidden")) window.drawProjects(); }); pause(); $("ed").classList.add("hidden"); document.body.style.overflow = ""; };
 
   async function addVideos(list, record = true) {
     if (record) save();

@@ -71,3 +71,8 @@
 - Vidéo ouverte → Suivant → Script. Script modifiable directement ; Suivant → caméra avec prompteur.
 - Prompteur : transparent en haut, défile pendant qu'on filme, plan par plan (passe au suivant après chaque prise), vitesse, taille, masquable.
 - Caméra : Suivant → plans directement dans Montage.
+
+## Projets (fait)
+- 5e onglet : montages enregistrés automatiquement sur le téléphone (IndexedDB : état + fichiers), toutes les 4 s et à la fermeture.
+- Liste avec miniature, durée, date ; ouvrir, renommer, dupliquer, supprimer.
+- Plus tard : bouton Programmer (TikTok).
