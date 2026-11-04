@@ -34,6 +34,7 @@
     kf: '<path d="M12 3 21 12 12 21 3 12z"/>',
     ai: '<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
     adjust: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+    crop: '<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>',
   };
   const ic = (n, s = 22) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
 
@@ -115,6 +116,25 @@
   .wheel { position: relative; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 16px; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); overflow: hidden; }
   .wheel input { position: absolute; inset: -4px; opacity: 0; width: 40px; height: 40px; border: 0; padding: 0; }
   .srow { display: flex; justify-content: space-between; font-size: 13px; color: #ccc; }
+  #edCrop { position: absolute; inset: 0; background: #000; z-index: 20; display: flex; flex-direction: column; color: #fff; }
+  #edCrop .ctop { display: flex; justify-content: space-between; align-items: center; padding: max(12px, env(safe-area-inset-top)) 14px 8px; }
+  #edCrop .ctop button { border: 0; border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 700; background: #2a2a2a; color: #fff; }
+  #edCrop .ctop button.ok { background: #FF5A4E; }
+  #edCrop .ctools { display: flex; gap: 10px; justify-content: center; }
+  #edCrop .ctools button { width: 40px; height: 40px; border-radius: 20px; border: 0; background: #222; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; }
+  #edCrop canvas { flex: 1; min-height: 0; width: 100%; touch-action: none; }
+  #edCrop .cbot { padding: 6px 12px max(14px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; }
+  .dialw { position: relative; height: 46px; touch-action: none; }
+  .dialw canvas { width: 100%; height: 46px; display: block; }
+  .dialw:after { content: ""; position: absolute; left: 50%; top: 6px; bottom: 6px; width: 2px; margin-left: -1px; background: #FF5A4E; border-radius: 1px; }
+  .dname { text-align: center; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #8a8a93; font-weight: 600; }
+  .knobs { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; padding: 4px 2px; flex: 0 0 auto; }
+  .knobs::-webkit-scrollbar { display: none; }
+  .knob { flex: 0 0 52px; width: 52px; height: 52px; border-radius: 26px; border: 2px solid #3a3a3a; background: #1f1f1f; color: #ddd; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; padding: 0; }
+  .knob svg { width: 22px; height: 22px; }
+  .knob.on { border-color: #FF5A4E; color: #fff; }
+  .knob.set { border-color: #fff; }
+  .knob.on.set { border-color: #FF5A4E; }
   .etr { position: absolute; width: 22px; height: 22px; border-radius: 6px; background: #fff; color: #111; z-index: 5; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #0f0f0f; }
   .etr.on { background: #FF5A4E; color: #fff; }
   .etr svg { width: 14px; height: 14px; }
@@ -413,9 +433,9 @@
     if (!sel) html = b("ai", "ai", "IA", "aibtn") + b("edit", "scissors", "Modifier") + b("sound", "note", "Son")
       + b("voice", "mic", voiceRec ? "Parle…" : "Voix off", voiceRec ? "rec" : "") + b("captions", "captions", "Légendes") + b("addtext", "text", "Texte") + b("fx", "ai", "Effets") + b("overlay", "overlay", "Superposition")
       + b("camera", "cam", camRec ? "Filme…" : "Caméra", camRec ? "rec" : "");
-    else if (sel.type === "v") html = back + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("speed", "speed", "Vitesse") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
+    else if (sel.type === "v") html = back + b("split", "split", "Diviser") + b("crop", "crop", "Recadrer") + b("adjust", "adjust", "Ajuster") + b("speed", "speed", "Vitesse") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "a") html = back + b("split", "split", "Diviser") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
-    else if (sel.type === "o") html = back + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
+    else if (sel.type === "o") html = back + b("split", "split", "Diviser") + b("crop", "crop", "Recadrer") + b("adjust", "adjust", "Ajuster") + b("volume", "vol", "Volume") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "f" && effects[sel.i].type === "gen") html = back + b("genedit", "ai", "Modifier (IA)") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "f") html = back + (FX[effects[sel.i].type] && FX[effects[sel.i].type].pos ? b("anchor", "adjust", effects[sel.i].anchor === "face" ? "Sur le visage" : "Au centre") : "") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
     else if (sel.type === "t") html = back + b("edittext", "text", "Modifier") + b("split", "split", "Diviser") + b("adjust", "adjust", "Ajuster") + b("dup", "copy", "Dupliquer") + b("del", "trash", "Supprimer");
@@ -804,7 +824,7 @@
   function faceOnScreen(time, W, H, mt) {
     const { i, off } = locate(time);
     if (i < 0) return null;
-    const c = clips[i], f = faceAt(c.ref, c.in + off * sp(c));
+    const c = clips[i], f = mapFace(c, faceAt(c.ref, c.in + off * sp(c)));
     if (!f) return null;
     const p = mainToScreen(c, off, f.x, f.y, W, H, mt);
     return { x: p.x, y: p.y, w: f.w * W * p.s, h: f.h * H * p.s };
@@ -1077,6 +1097,285 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
   }
 
 
+
+  // ---------- Recadrage, pivot 90°, miroir, redressement et couleurs d'une image (plan ou superposition) ----------
+  const CROP0 = { x: 0, y: 0, w: 1, h: 1 };
+  const srcSize = src => [src.naturalWidth || src.videoWidth || src.width, src.naturalHeight || src.videoHeight || src.height];
+  // Taille de l'image une fois pivotée (en pixels de la source)
+  const orientSize = (src, it) => { const [w, h] = srcSize(src); return (it.r90 || 0) % 2 ? [h, w] : [w, h]; };
+  const hasLook = it => !!(it.crop || it.r90 || it.flip || it.str || hasCol(it));
+  const hasCol = it => !!(it.col && (it.col.b || it.col.c || it.col.s || it.col.w));
+  // Dessine la partie recadrée de la source dans le rectangle (x, y, w, h)
+  function drawSrc(g, src, it, x, y, w, h, cover = true) {
+    if (!hasLook(it)) { g.drawImage(src, x, y, w, h); return; }
+    const [sw, sh] = srcSize(src), [OW, OH] = orientSize(src, it), cr = it.crop || CROP0;
+    let tgt = g, tx = x, ty = y, tmp = null;
+    if (hasCol(it)) {   // couleurs : on dessine à part, on règle, puis on pose
+      tmp = tmpCanvas(Math.max(2, Math.round(Math.abs(w))), Math.max(2, Math.round(Math.abs(h))), "col");
+      tgt = tmp.getContext("2d"); tgt.setTransform(1, 0, 0, 1, 0, 0); tgt.clearRect(0, 0, tmp.width, tmp.height);
+      tgt.scale(tmp.width / w, tmp.height / h); tx = 0; ty = 0;
+    }
+    tgt.save();
+    tgt.beginPath(); tgt.rect(tx, ty, w, h); tgt.clip();
+    if (it.str) {   // redressement : on tourne et on agrandit juste ce qu'il faut pour ne pas voir de coins vides
+      const a = Math.abs(it.str) * Math.PI / 180, k = cover ? Math.max((w * Math.cos(a) + h * Math.sin(a)) / w, (w * Math.sin(a) + h * Math.cos(a)) / h) : 1;
+      tgt.translate(tx + w / 2, ty + h / 2); tgt.rotate(it.str * Math.PI / 180); tgt.scale(k, k); tgt.translate(-tx - w / 2, -ty - h / 2);
+    }
+    const kx = w / (cr.w * OW), ky = h / (cr.h * OH);
+    tgt.translate(tx - cr.x * OW * kx, ty - cr.y * OH * ky); tgt.scale(kx, ky);
+    tgt.translate(OW / 2, OH / 2); tgt.rotate((it.r90 || 0) * Math.PI / 2); if (it.flip) tgt.scale(-1, 1);
+    tgt.drawImage(src, -sw / 2, -sh / 2, sw, sh);
+    tgt.restore();
+    if (tmp) {
+      tgt.setTransform(1, 0, 0, 1, 0, 0);
+      applyCol(tgt, tmp, it.col);
+      g.drawImage(tmp, x, y, w, h);
+    }
+  }
+  // Luminosité, contraste, saturation, chaleur (modes de fusion : même rendu sur iPhone et à l'export)
+  function applyCol(c, cv, col) {
+    const W = cv.width, H = cv.height, b = (col.b || 0) / 100, ct = (col.c || 0) / 100, s = (col.s || 0) / 100, wm = (col.w || 0) / 100;
+    const keep = tmpCanvas(W, H, "colk"), kg = keep.getContext("2d");
+    kg.clearRect(0, 0, W, H); kg.drawImage(cv, 0, 0);   // copie (pour le contraste et la transparence)
+    c.save();
+    const fill = (op, style, a = 1) => { c.globalCompositeOperation = op; c.globalAlpha = a; c.fillStyle = style; c.fillRect(0, 0, W, H); };
+    if (ct > 0) { c.globalCompositeOperation = "overlay"; c.globalAlpha = Math.min(1, ct); c.drawImage(keep, 0, 0); }
+    if (ct < 0) fill("source-over", "rgb(128,128,128)", -ct * 0.6);
+    if (b > 0) fill("screen", "#fff", b * 0.45);
+    if (b < 0) fill("multiply", `rgb(${255 * (1 + b * 0.6)},${255 * (1 + b * 0.6)},${255 * (1 + b * 0.6)})`, 1);
+    if (s < 0) fill("saturation", "rgb(128,128,128)", -s);
+    if (s > 0) { c.globalCompositeOperation = "soft-light"; c.globalAlpha = s * 0.6; c.drawImage(keep, 0, 0); }
+    if (wm > 0) fill("soft-light", "rgb(255,150,40)", wm * 0.7);
+    if (wm < 0) fill("soft-light", "rgb(40,120,255)", -wm * 0.7);
+    c.globalAlpha = 1; c.globalCompositeOperation = "destination-in"; c.drawImage(keep, 0, 0);   // garde la transparence d'origine
+    c.restore();
+  }
+  // Point de l'image source (0-1) -> point dans l'image recadrée (0-1)
+  function mapNorm(it, x, y) {
+    let u = it.flip ? 1 - x : x, v = y;
+    const r = (it.r90 || 0) % 4;
+    if (r === 1) [u, v] = [1 - v, u]; else if (r === 2) [u, v] = [1 - u, 1 - v]; else if (r === 3) [u, v] = [v, 1 - u];
+    const cr = it.crop || CROP0;
+    return [(u - cr.x) / cr.w, (v - cr.y) / cr.h];
+  }
+  function mapFace(it, f) {
+    if (!f || !hasLook(it)) return f;
+    const [x, y] = mapNorm(it, f.x, f.y), cr = it.crop || CROP0, odd = (it.r90 || 0) % 2;
+    return { x, y, w: (odd ? f.h : f.w) / cr.w, h: (odd ? f.w : f.h) / cr.h };
+  }
+
+  // ----- Règle graduée (comme sur l'iPhone) -----
+  function dial(box, o) {
+    box.innerHTML = "<canvas></canvas>";
+    const cv = box.firstChild, ppu = Math.min(14, Math.max(2.4, 1300 / (o.max - o.min)));
+    let val = o.value;
+    const paint = () => {
+      const r = devicePixelRatio || 1, W = box.clientWidth, H = 46;
+      cv.width = W * r; cv.height = H * r;
+      const g = cv.getContext("2d"); g.scale(r, r); g.clearRect(0, 0, W, H);
+      const step = ppu >= 6 ? 1 : ppu >= 3 ? 2 : 5;
+      const from = Math.ceil((val - W / 2 / ppu) / step) * step, to = val + W / 2 / ppu;
+      for (let u = from; u <= to; u += step) {
+        if (u < o.min || u > o.max) continue;
+        const x = W / 2 + (u - val) * ppu, major = u % (step * 5) === 0, zero = u === o.def;
+        g.fillStyle = zero ? "#fff" : major ? "#aaa" : "#555";
+        const hh = zero ? 26 : major ? 18 : 10;
+        g.fillRect(Math.round(x), (H - hh) / 2, zero ? 2 : 1, hh);
+      }
+    };
+    paint();
+    let x0 = 0, v0 = 0, on = false;
+    box.onpointerdown = e => { on = true; x0 = e.clientX; v0 = val; box.setPointerCapture(e.pointerId); e.preventDefault(); };
+    box.onpointermove = e => {
+      if (!on) return;
+      let v = Math.round((v0 - (e.clientX - x0) / ppu) / (o.step || 1)) * (o.step || 1);
+      v = Math.min(o.max, Math.max(o.min, v));
+      if (o.def !== undefined && Math.abs(v - o.def) <= (o.max - o.min) * 0.006 && v !== o.def) v = o.def;   // aimant sur la valeur de départ
+      if (v === val) return;
+      if (v === o.def && navigator.vibrate) navigator.vibrate(8);
+      val = v; paint(); o.onChange(v);
+    };
+    box.onpointerup = box.onpointercancel = () => { on = false; };
+    return { set: v => { val = v; paint(); } };
+  }
+
+  // ----- Ajuster : réglages en ronds + une règle -----
+  const KN = {
+    zoom: ['<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5M11 8v6M8 11h6"/>'],
+    rot: ['<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>'],
+    px: ['<path d="M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3"/>'],
+    py: ['<path d="M12 4v16M9 7l3-3 3 3M9 17l3 3 3-3"/>'],
+    op: ['<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>'],
+    b: ['<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'],
+    c: ['<circle cx="12" cy="12" r="8"/><path d="M12 4v16" /><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>'],
+    s: ['<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>'],
+    w: ['<path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/>'],
+  };
+  function adjustSheet() {
+    pause();
+    const k = sel.type, i = sel.i, it = itemOf(k, i);
+    save();
+    const P = [];
+    if (k === "v") P.push(["zoom", "Zoom", 50, 400, 100], ["rot", "Rotation", -180, 180, 0], ["px", "Position horizontale", -50, 50, 0], ["py", "Position verticale", -50, 50, 0]);
+    else P.push(["zoom", "Taille", 10, 300, 100], ["rot", "Rotation", -180, 180, 0], ["op", "Opacité", 0, 100, 100]);
+    if (k === "v" || k === "o") P.push(["b", "Luminosité", -100, 100, 0], ["c", "Contraste", -100, 100, 0], ["s", "Saturation", -100, 100, 0], ["w", "Chaleur", -100, 100, 0]);
+    const tf = { zoom: ["scale", 100], rot: ["rot", 1], px: ["x", 100], py: ["y", 100], op: ["op", 100] };
+    const get = id => {
+      if (tf[id]) { const v = valAt(k, it, t - startOfItem(k, i)); return Math.round(v[tf[id][0]] * tf[id][1]); }
+      return (it.col && it.col[id]) || 0;
+    };
+    const setv = (id, v) => {
+      if (tf[id]) setProps(k, i, { [tf[id][0]]: v / tf[id][1] });
+      else { it.col = { ...(it.col || {}), [id]: v }; }
+      drawOverlays(); renderStill(t);
+    };
+    let cur = P[0][0];
+    sheet(`<div class="shd"><b>Ajuster</b><span style="display:flex;gap:8px"><button class="chip" id="adReset">Réinitialiser</button><button class="ok" id="adOk">${svgI('<path d="M5 12l5 5 9-10"/>')}</button></span></div>
+      <div class="dname" id="adName"></div>
+      <div class="dialw" id="adDial"></div>
+      <div class="knobs">${P.map(([id]) => `<button class="knob" data-kn="${id}"></button>`).join("")}</div>
+      ${it.kf && it.kf.length ? `<div class="small" style="color:#8a8a93;margin:0;text-align:center">Élément animé : tes changements créent une clé à cet instant.</div>` : ""}
+      <div class="small" style="color:#8a8a93;margin:0;text-align:center">Touche deux fois un rond pour le remettre à zéro.</div>`, false, true);
+    const body = $("edSheetBody");
+    const knobs = () => body.querySelectorAll("[data-kn]").forEach(b => {
+      const p = P.find(x => x[0] === b.dataset.kn), v = get(p[0]), set = v !== p[4];
+      b.classList.toggle("on", p[0] === cur); b.classList.toggle("set", set);
+      b.innerHTML = set ? String(v) : svgI(KN[p[0]][0]);
+    });
+    let dl = null;
+    const pickP = id => {
+      cur = id;
+      const p = P.find(x => x[0] === id);
+      $("adName").textContent = p[1];
+      dl = dial($("adDial"), { min: p[2], max: p[3], def: p[4], value: get(id), onChange: v => { setv(id, v); knobs(); } });
+      knobs();
+    };
+    let lastTap = { id: "", at: 0 };
+    body.querySelectorAll("[data-kn]").forEach(b => b.onclick = () => {
+      const id = b.dataset.kn, now = performance.now();
+      if (lastTap.id === id && now - lastTap.at < 350) { const p = P.find(x => x[0] === id); setv(id, p[4]); pickP(id); lastTap = { id: "", at: 0 }; return; }
+      lastTap = { id, at: now };
+      pickP(id);
+    });
+    pickP(cur);
+    $("adReset").onclick = () => { it.kf = []; PROPS[k].forEach(p => delete it[p]); if (k !== "v") { it.x = 0.5; it.y = k === "t" ? 0.35 : 0.4; } delete it.col; pickP(cur); draw(); drawOverlays(); renderStill(t); };
+    $("adOk").onclick = () => { closeSheet(); draw(); };
+  }
+
+  // ----- Recadrer (comme l'app Photos) -----
+  const RATIOS = [["orig", "Original"], ["free", "Libre"], ["1", "Carré"], ["0.5625", "9:16"], ["0.8", "4:5"], ["1.7778", "16:9"]];
+  async function cropSheet() {
+    pause();
+    const k = sel.type, i = sel.i, it = itemOf(k, i);
+    if (k !== "v" && k !== "o") return;
+    // image de l'élément à la barre blanche
+    const m = await media(it.ref).catch(() => null);
+    if (!m) return toast("Image indisponible");
+    let src = null;
+    if (m.image) src = m.image;
+    else {
+      const local = Math.max(0, t - startOfItem(k, i));
+      const w = await (k === "v" ? m.prev : smallSink(m)).getCanvas(Math.min(it.out - 0.02, it.in + local * sp(it)) + (m.off || 0)).catch(() => null);
+      if (w) { src = document.createElement("canvas"); src.width = w.canvas.width; src.height = w.canvas.height; src.getContext("2d").drawImage(w.canvas, 0, 0); }
+    }
+    if (!src) return toast("Image indisponible");
+    save();
+    const st = { crop: { ...(it.crop || CROP0) }, r90: it.r90 || 0, flip: !!it.flip, str: it.str || 0 };
+    const isMain = k === "v";
+    let ratio = isMain ? "0.5625" : (it.cropRatio || "orig");
+    let box = $("edCrop");
+    if (!box) { box = document.createElement("div"); box.id = "edCrop"; $("ed").appendChild(box); }
+    box.innerHTML = `<div class="ctop"><button id="crNo">Annuler</button><span style="font-weight:700">Recadrer</span><button class="ok" id="crOk">OK</button></div>
+      <canvas id="crCv"></canvas>
+      <div class="cbot">
+        <div class="dname" id="crName">Redresser</div>
+        <div class="dialw" id="crDial"></div>
+        <div class="ctools">
+          <button id="crRot" title="Pivoter">${svgI('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>')}</button>
+          <button id="crFlip" title="Miroir">${svgI('<path d="M12 3v18M8 7l-5 5 5 5zM16 7l5 5-5 5z"/>')}</button>
+          <button id="crReset" title="Réinitialiser">${svgI('<path d="M4 4v6h6"/><path d="M20 20v-6h-6"/><path d="M20 10A8 8 0 0 0 6 5.3L4 10M4 14a8 8 0 0 0 14 4.7l2-4.7"/>')}</button>
+        </div>
+        ${isMain ? `<div class="small" style="text-align:center;color:#8a8a93;margin:0">Format TikTok 9:16</div>` : `<div class="chips" style="justify-content:center">${RATIOS.map(([id, l]) => `<button class="chip${ratio === id ? " on" : ""}" data-ra="${id}">${l}</button>`).join("")}</div>`}
+      </div>`;
+    box.classList.remove("hidden");
+    const cv = $("crCv"), g = cv.getContext("2d");
+    let lay = null;   // position de l'image pivotée dans le canvas
+    const OWH = () => orientSize(src, st);
+    const aspect = () => { const [OW, OH] = OWH(); return ratio === "free" ? null : ratio === "orig" ? OW / OH : +ratio; };
+    // plus grand cadre au bon format, centré
+    const fitCrop = () => {
+      const a = aspect(); if (!a) { st.crop = { ...CROP0 }; return; }
+      const [OW, OH] = OWH();
+      let w = 1, h = (OW / a) / OH;
+      if (h > 1) { h = 1; w = (OH * a) / OW; }
+      st.crop = { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
+    };
+    const paint = () => {
+      const r = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+      cv.width = W * r; cv.height = H * r; g.setTransform(r, 0, 0, r, 0, 0);
+      g.fillStyle = "#000"; g.fillRect(0, 0, W, H);
+      const [OW, OH] = OWH(), pad = 26, sc = Math.min((W - pad * 2) / OW, (H - pad * 2) / OH);
+      lay = { x: (W - OW * sc) / 2, y: (H - OH * sc) / 2, w: OW * sc, h: OH * sc };
+      const full = { r90: st.r90, flip: st.flip };   // image entière, assombrie
+      g.globalAlpha = 0.35; drawSrc(g, src, full, lay.x, lay.y, lay.w, lay.h); g.globalAlpha = 1;
+      const c = st.crop, rx = lay.x + c.x * lay.w, ry = lay.y + c.y * lay.h, rw = c.w * lay.w, rh = c.h * lay.h;
+      drawSrc(g, src, { ...st, col: null }, rx, ry, rw, rh);   // le résultat, dans le cadre
+      g.strokeStyle = "rgba(255,255,255,.45)"; g.lineWidth = 1;
+      for (let q = 1; q < 3; q++) { g.beginPath(); g.moveTo(rx + rw * q / 3, ry); g.lineTo(rx + rw * q / 3, ry + rh); g.moveTo(rx, ry + rh * q / 3); g.lineTo(rx + rw, ry + rh * q / 3); g.stroke(); }
+      g.strokeStyle = "#fff"; g.lineWidth = 1.5; g.strokeRect(rx, ry, rw, rh);
+      g.lineWidth = 4; const L = 18;
+      [[rx, ry, 1, 1], [rx + rw, ry, -1, 1], [rx, ry + rh, 1, -1], [rx + rw, ry + rh, -1, -1]].forEach(([x, y, sx, sy]) => { g.beginPath(); g.moveTo(x, y + sy * L); g.lineTo(x, y); g.lineTo(x + sx * L, y); g.stroke(); });
+    };
+    requestAnimationFrame(paint);
+    if (!it.crop && isMain) fitCrop();
+    // gestes : coins = agrandir, intérieur = déplacer
+    let drag = null;
+    cv.onpointerdown = e => {
+      const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, c = st.crop;
+      const rx = lay.x + c.x * lay.w, ry = lay.y + c.y * lay.h, rw = c.w * lay.w, rh = c.h * lay.h;
+      const corners = [[rx, ry, "tl"], [rx + rw, ry, "tr"], [rx, ry + rh, "bl"], [rx + rw, ry + rh, "br"]];
+      const hit = corners.find(([x, y]) => Math.hypot(px - x, py - y) < 34);
+      drag = { px, py, c0: { ...c }, mode: hit ? hit[2] : (px > rx && px < rx + rw && py > ry && py < ry + rh ? "move" : null) };
+      if (drag.mode) cv.setPointerCapture(e.pointerId);
+    };
+    cv.onpointermove = e => {
+      if (!drag || !drag.mode) return;
+      const r = cv.getBoundingClientRect(), dx = (e.clientX - r.left - drag.px) / lay.w, dy = (e.clientY - r.top - drag.py) / lay.h, c0 = drag.c0;
+      if (drag.mode === "move") {
+        st.crop = { ...c0, x: Math.min(1 - c0.w, Math.max(0, c0.x + dx)), y: Math.min(1 - c0.h, Math.max(0, c0.y + dy)) };
+      } else {
+        const left = drag.mode[1] === "l", top = drag.mode[0] === "t";
+        let x0 = left ? c0.x + c0.w : c0.x, y0 = top ? c0.y + c0.h : c0.y;   // coin opposé, fixe
+        let w = Math.max(0.08, left ? c0.w - dx : c0.w + dx), h = Math.max(0.08, top ? c0.h - dy : c0.h + dy);
+        w = Math.min(w, left ? x0 : 1 - x0); h = Math.min(h, top ? y0 : 1 - y0);
+        const a = aspect();
+        if (a) {   // format verrouillé
+          const [OW, OH] = OWH(), k2 = a * OH / OW;   // largeur = hauteur × k2 (en fractions)
+          if (w / h > k2) w = h * k2; else h = w / k2;
+        }
+        st.crop = { x: left ? x0 - w : x0, y: top ? y0 - h : y0, w, h };
+      }
+      paint();
+    };
+    cv.onpointerup = cv.onpointercancel = () => { drag = null; };
+    dial($("crDial"), { min: -45, max: 45, def: 0, value: st.str, onChange: v => { st.str = v; $("crName").textContent = v ? `Redresser ${v}°` : "Redresser"; paint(); } });
+    $("crRot").onclick = () => { st.r90 = (st.r90 + 3) % 4; fitCrop(); paint(); };
+    $("crFlip").onclick = () => { st.flip = !st.flip; paint(); };
+    $("crReset").onclick = () => { st.r90 = 0; st.flip = false; st.str = 0; if (!isMain) ratio = "orig"; fitCrop(); $("crDial") && dial($("crDial"), { min: -45, max: 45, def: 0, value: 0, onChange: v => { st.str = v; paint(); } }); box.querySelectorAll("[data-ra]").forEach(x => x.classList.toggle("on", x.dataset.ra === ratio)); paint(); };
+    box.querySelectorAll("[data-ra]").forEach(b => b.onclick = () => { ratio = b.dataset.ra; box.querySelectorAll("[data-ra]").forEach(x => x.classList.toggle("on", x === b)); fitCrop(); paint(); });
+    const close = () => { box.classList.add("hidden"); box.innerHTML = ""; };
+    $("crNo").onclick = close;
+    $("crOk").onclick = () => {
+      const full = st.crop.x <= 0.0005 && st.crop.y <= 0.0005 && st.crop.w >= 0.999 && st.crop.h >= 0.999;
+      if (full) delete it.crop; else it.crop = { x: +st.crop.x.toFixed(4), y: +st.crop.y.toFixed(4), w: +st.crop.w.toFixed(4), h: +st.crop.h.toFixed(4) };
+      if (st.r90) it.r90 = st.r90; else delete it.r90;
+      if (st.flip) it.flip = true; else delete it.flip;
+      if (st.str) it.str = st.str; else delete it.str;
+      if (!isMain) it.cropRatio = ratio;
+      close(); draw(); drawOverlays(); renderStill(t);
+    };
+  }
+
   // ---------- Transitions entre deux plans (sur le début du plan suivant) ----------
   const TR = [["none", "Aucune"], ["fade", "Fondu"], ["black", "Fondu noir"], ["slide", "Glisser"], ["zoom", "Zoom"], ["flash", "Flash"]];
   const svgI = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -1096,7 +1395,7 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     return off < d ? { type: p.type, u: Math.max(0, off / d) } : null;
   }
   const tmpCv = {};
-  function tmpCanvas(W, H, k = "b") { const c = tmpCv[k + W] ||= document.createElement("canvas"); if (c.width !== W) { c.width = W; c.height = H; } return c; }
+  function tmpCanvas(W, H, k = "b") { const c = tmpCv[k] ||= document.createElement("canvas"); if (c.width !== W || c.height !== H) { c.width = W; c.height = H; } return c; }
   const snapP = { cv: null, owner: null }, snapE = { cv: null, owner: null };
   function keepSnap(snap, g, W, H, owner) {
     if (!snap.cv || snap.cv.width !== W) { snap.cv = document.createElement("canvas"); snap.cv.width = W; snap.cv.height = H; }
@@ -1174,15 +1473,15 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     const v = valAt("v", c, local);
     let mt = null;
     if (time !== undefined && effects.length) {
-      const f = faceAt(c.ref, c.in + local * sp(c));
+      const f = mapFace(c, faceAt(c.ref, c.in + local * sp(c)));
       mt = mainFxTransform(time, W, H, f ? mainToScreen(c, local, f.x, f.y, W, H, null) : null);
       if (mt.z === 1 && !mt.dx && !mt.dy) mt = null;
     }
-    if (!mt && v.scale === 1 && !v.x && !v.y && !v.rot) { g.drawImage(src, 0, 0, W, H); return null; }
+    if (!mt && v.scale === 1 && !v.x && !v.y && !v.rot) { drawSrc(g, src, c, 0, 0, W, H); return null; }
     g.save();
     if (mt) { g.translate(mt.fx + mt.dx, mt.fy + mt.dy); g.scale(mt.z, mt.z); g.translate(-mt.fx, -mt.fy); }
     g.translate(W / 2 + v.x * W, H / 2 + v.y * H); g.rotate(v.rot * Math.PI / 180); g.scale(v.scale, v.scale);
-    g.drawImage(src, -W / 2, -H / 2, W, H);
+    drawSrc(g, src, c, -W / 2, -H / 2, W, H);
     g.restore();
     return mt;
   }
@@ -1192,10 +1491,9 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     g.save();
     g.globalAlpha = Math.max(0, Math.min(1, v.op));
     g.translate(v.x * W, v.y * H); g.rotate(v.rot * Math.PI / 180);
-    if (src instanceof HTMLImageElement) {
-      const r = Math.min(bw / src.naturalWidth, bh / src.naturalHeight), w = src.naturalWidth * r, h = src.naturalHeight * r;
-      g.drawImage(src, -w / 2, -h / 2, w, h);
-    } else g.drawImage(src, -bw / 2, -bh / 2, bw, bh);
+    const [OW, OH] = orientSize(src, o), cr = o.crop || CROP0, cw = cr.w * OW, ch = cr.h * OH;
+    const r = Math.min(bw / cw, bh / ch), w = cw * r, h = ch * r;
+    drawSrc(g, src, o, -w / 2, -h / 2, w, h, false);
     g.restore();
   }
   // Polices du texte (chargées depuis Google Fonts)
@@ -1643,6 +1941,7 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     } else if (name === "delcaps") { save(); caps = []; sel = null; }
     else if (name === "speed") return speedSheet();
     else if (name === "adjust") return adjustSheet();
+    else if (name === "crop") return cropSheet();
     else if (name === "ai") return assistSheet();
     else if (name === "fx") return fxSheet();
     else if (name === "genedit") return genSheet();
@@ -1702,24 +2001,7 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     };
     $("edTxtOk").onclick = () => { closeSheet(); if (isNew && cur.text.trim()) toast("Glisse le texte sur l'image, pince pour l'agrandir ou le tourner. ◇ pour l'animer.", 3500); };
   }
-  // ----- Ajuster : zoom / taille, rotation, transparence (crée une clé si l'élément est animé) -----
-  function adjustSheet() {
-    const k = sel.type, i = sel.i, it = itemOf(k, i), v = valAt(k, it, t - startOfItem(k, i));
-    save();
-    const row = (id, label, min, max, val) => `<div style="display:flex;justify-content:space-between;font-size:13px"><span>${label}</span><span id="${id}V">${val}</span></div><input type="range" id="${id}" min="${min}" max="${max}" value="${val}">`;
-    sheet(`<b>Ajuster</b>${it.kf && it.kf.length ? `<div class="small" style="color:#999">Élément animé : les changements créent une clé à cet instant.</div>` : ""}
-      ${row("adS", k === "v" ? "Zoom (%)" : "Taille (%)", k === "v" ? 50 : 10, k === "v" ? 400 : 300, Math.round(v.scale * 100))}
-      ${row("adR", "Rotation (°)", -180, 180, Math.round(v.rot))}
-      ${k === "v" ? row("adX", "Cadrage horizontal (%)", -50, 50, Math.round(v.x * 100)) + row("adY", "Cadrage vertical (%)", -50, 50, Math.round(v.y * 100)) : row("adO", "Opacité (%)", 0, 100, Math.round(v.op * 100))}
-      <button class="main alt" id="adReset">Réinitialiser</button>`);
-    const map = { adS: ["scale", 100], adR: ["rot", 1], adX: ["x", 100], adY: ["y", 100], adO: ["op", 100] };
-    Object.entries(map).forEach(([id, [p, div]]) => {
-      const el = $(id);
-      if (!el) return;
-      el.oninput = () => { $(id + "V").textContent = el.value; setProps(k, i, { [p]: +el.value / div }); drawOverlays(); renderStill(t); };
-    });
-    $("adReset").onclick = () => { it.kf = []; PROPS[k].forEach(p => delete it[p]); if (k !== "v") { it.x = 0.5; it.y = 0.4; } closeSheet(); draw(); renderStill(t); };
-  }
+
 
   // ----- Vitesse (x0,5 à x100) -----
   // Curseur continu, réparti en logarithme : autant de place de 0,5 à 5 que de 5 à 100

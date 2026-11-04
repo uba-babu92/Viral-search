@@ -61,3 +61,7 @@
 - Bouton entre deux plans : Aucune, Fondu, Fondu noir, Glisser, Zoom, Flash ; durée 0,2 à 1 s ; « Appliquer à tous ». Dans l'aperçu et l'export. L'IA peut en mettre (rarement).
 - Menu Texte : aperçu en direct, 8 polices, style (Contour, Ombre, Boîte, Simple), animations en pastilles, couleurs + roue chromatique.
 - Menu Effets en grille d'icônes ; style sombre commun à tous les menus.
+
+## Ajuster + Recadrer façon Photos (fait)
+- Ajuster : ronds à icônes + règle graduée (zoom, rotation, position, opacité ; luminosité, contraste, saturation, chaleur pour plans et superpositions). Double-tap = remise à zéro.
+- Recadrer : cadre à poignées + grille, formats (Original, Libre, Carré, 9:16, 4:5, 16:9 ; 9:16 imposé pour la vidéo principale), redresser, pivoter 90°, miroir. Le suivi du visage tient compte du recadrage.
