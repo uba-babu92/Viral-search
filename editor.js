@@ -624,22 +624,33 @@
     })());
   }
   // ---------- Proxys : copie légère de chaque vidéo pour l'aperçu (l'export garde l'original) ----------
-  let proxyQueue = Promise.resolve(), proxyTodo = 0, proxyDone = 0;
-  function proxyLabel() { $("edProxy").textContent = proxyTodo > proxyDone ? `Préparation de l'aperçu ${proxyDone + 1}/${proxyTodo}…` : ""; }
+  let proxyTodo = 0, proxyDone = 0, proxyRunning = 0;
+  const proxyWait = [];
+  // deux aperçus préparés en même temps (plus rapide sur iPhone)
+  const proxySlot = () => proxyRunning < 2 ? (proxyRunning++, Promise.resolve()) : new Promise(r => proxyWait.push(r));
+  const proxyFree = () => { const n = proxyWait.shift(); if (n) n(); else proxyRunning--; };
+  const PXW = 360, PXH = 640;   // taille des copies d'aperçu
+  function proxyLabel() { $("edProxy").textContent = proxyTodo > proxyDone ? `Préparation de l'aperçu… ${Math.round(proxyDone * 100 / proxyTodo)} %` : ""; }
+  // Dès qu'un rush est ajouté (page Montage ou caméra), son aperçu se prépare déjà en arrière-plan
+  window.prewarmMedia = ref => { if (ref && !ref.image && (ref.file || ref.url)) media(ref).catch(() => {}); };
   function buildProxy(ref, m, blob) {
     proxyTodo++; proxyLabel();
-    proxyQueue = proxyQueue.then(async () => {
+    proxySlot().then(async () => {
       try {
-        const input = new MB.Input({ source: new MB.BlobSource(blob), formats: MB.ALL_FORMATS });
-        const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: "in-memory" }), target: new MB.BufferTarget() });
-        const conv = await MB.Conversion.init({ input, output,
-          video: { width: PW, height: PH, fit: "contain", frameRate: FPS, codec: "avc", bitrate: 1.2e6, keyFrameInterval: 0.5, forceTranscode: true },
-          audio: { discard: true } });
-        if (!conv.isValid) throw new Error("proxy impossible");
-        conv.onProgress = pr => { $("edProxy").textContent = `Préparation de l'aperçu ${proxyDone + 1}/${proxyTodo}… ${Math.round(pr * 100)} %`; };
-        await conv.execute();
-        input.dispose && input.dispose();
-        const pin = new MB.Input({ source: new MB.BlobSource(new Blob([output.target.buffer], { type: "video/mp4" })), formats: MB.ALL_FORMATS });
+        const vopt = { width: PXW, height: PXH, fit: "contain", frameRate: FPS, codec: "avc", bitrate: 1e6, keyFrameInterval: 0.5, forceTranscode: true };
+        const run = async video => {
+          const input = new MB.Input({ source: new MB.BlobSource(blob), formats: MB.ALL_FORMATS });
+          const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: "in-memory" }), target: new MB.BufferTarget() });
+          const conv = await MB.Conversion.init({ input, output, video, audio: { discard: true } });
+          if (!conv.isValid) throw new Error("proxy impossible");
+          conv.onProgress = pr => { const all = proxyTodo ? Math.round(proxyDone * 100 / proxyTodo) : 0; $("edProxy").textContent = `Préparation de l'aperçu… ${Math.min(99, all + Math.round(pr * 100 / proxyTodo))} %`; };
+          await conv.execute();
+          input.dispose && input.dispose();
+          return output.target.buffer;
+        };
+        // encodeur matériel de l'iPhone si possible (plus rapide), sinon encodage normal
+        const buf = await run({ ...vopt, hardwareAcceleration: "prefer-hardware" }).catch(() => run(vopt));
+        const pin = new MB.Input({ source: new MB.BlobSource(new Blob([buf], { type: "video/mp4" })), formats: MB.ALL_FORMATS });
         const pv = await pin.getPrimaryVideoTrack();
         const off = (await pv.getFirstTimestamp().catch(() => 0)) - (await m.v.getFirstTimestamp().catch(() => 0));
         m.prev = new MB.CanvasSink(pv, { width: PW, height: PH, fit: "contain", poolSize: 10 });
@@ -647,8 +658,8 @@
         m.off = off;
         m.proxy = true;
         if (!playing) { closeFeeds(); renderStill(t); }
-      } catch (e) { /* on garde l'original pour l'aperçu */ }
-      proxyDone++; proxyLabel();
+      } catch (e) { console.warn("proxy", e); /* on garde l'original pour l'aperçu */ }
+      proxyDone++; proxyLabel(); proxyFree();
     });
   }
   async function mediaDuration(ref) {

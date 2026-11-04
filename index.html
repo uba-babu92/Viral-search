@@ -415,6 +415,7 @@ function drawRushes() {
   const box = document.getElementById("montageInfo");
   document.getElementById("montageGo").disabled = !rushes.length;
   box.innerHTML = rushes.length ? `<b>${rushes.length} rush(s). Glisse ☰ pour changer l'ordre.</b>` : "";
+  rushes.forEach(r => window.prewarmMedia && window.prewarmMedia(r));   // aperçu préparé avant même d'ouvrir l'éditeur
   rushes.forEach((r, i) => {
     const row = document.createElement("div");
     row.className = "rush";
