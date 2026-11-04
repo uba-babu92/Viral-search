@@ -76,3 +76,9 @@
 - 5e onglet : montages enregistrés automatiquement sur le téléphone (IndexedDB : état + fichiers), toutes les 4 s et à la fermeture.
 - Liste avec miniature, durée, date ; ouvrir, renommer, dupliquer, supprimer.
 - Plus tard : bouton Programmer (TikTok).
+
+## Script manager en blocs (fait)
+- Coach renommé Script manager (ne parle que du texte).
+- Script en blocs colorés : Hook (corail), Texte (gris), Rehook (orange), CTA (bleu) ; outils Changer / Supprimer / Déplacer ; + pour ajouter.
+- Hooks, rehooks, CTA tirés de vraies vidéos virales de la niche, essence gardée, adaptés à l histoire ; réserve préparée d avance (changement instantané), puis recharge auto.
+- Questions au Script manager en bas ; Suivant = chaque bloc devient un plan du prompteur.

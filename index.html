@@ -126,6 +126,28 @@
   #camChoice { position: absolute; inset: 0; background: #0008; display: flex; align-items: flex-end; }
   #camChoice .sheet { width: 100%; background: var(--beige); border-radius: 28px 28px 0 0; padding: 18px 16px max(18px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; }
   #camChoice .sheet button.main.alt { background: var(--white); color: var(--ink); }
+  /* Script manager : blocs */
+  #smHead { margin: 4px 2px 6px; }
+  .blk { display: block; background: var(--white); border-radius: 18px; padding: 12px 12px 12px 16px; position: relative; overflow: hidden; transition: transform .15s; }
+  .blk:before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--bc); }
+  .blk.drag { z-index: 5; box-shadow: 0 10px 30px #0002; transition: none; }
+  .blk.busy { opacity: .5; pointer-events: none; }
+  .bt-hook { --bc: #FF5A4E; } .bt-text { --bc: #CFC8BD; } .bt-rehook { --bc: #F5A623; } .bt-cta { --bc: #3B82F6; }
+  .blk .bmain { flex: 1; min-width: 0; }
+  .blk .bhead { display: flex; gap: 8px; align-items: baseline; margin-bottom: 6px; padding-right: 104px; min-height: 22px; }
+  .blk .btag { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--bc); }
+  .bt-text .btag { color: var(--grey); }
+  .blk .bsrc { font-size: 11px; color: var(--grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .blk .btext { font-size: 15px; line-height: 1.45; outline: none; border-radius: 8px; -webkit-user-select: text; user-select: text; min-height: 1.4em; }
+  .blk .btext:focus { background: var(--beige); }
+  .blk .btools { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+  .blk .btools button, .blk .bgrip { width: 32px; height: 32px; border-radius: 16px; border: 0; background: var(--beige); color: var(--ink); display: flex; align-items: center; justify-content: center; padding: 0; }
+  .blk .bgrip { touch-action: none; cursor: grab; background: none; color: var(--grey); }
+  .badd { display: flex; justify-content: center; align-items: center; gap: 6px; min-height: 30px; }
+  .badd .bplus { width: 26px; height: 26px; border-radius: 13px; border: 0; background: none; color: var(--grey); font-size: 18px; line-height: 1; padding: 0; }
+  .badd .bpick { display: flex; gap: 6px; }
+  .badd .bpick.hidden { display: none; }
+  .badd .bpick button { border: 0; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 700; background: var(--white); color: var(--bc); box-shadow: inset 0 0 0 1.5px var(--bc); }
   /* Projets */
   .proj { display: flex; align-items: center; gap: 12px; background: var(--beige); border-radius: 18px; padding: 8px; margin: 8px 0; }
   .proj .pth { position: relative; width: 54px; height: 96px; border-radius: 12px; overflow: hidden; background: var(--ink); flex-shrink: 0; }
@@ -207,7 +229,7 @@
 <section id="secScript" class="hidden">
  <div class="card">
   <div class="label">Script</div>
-  <h2 class="hero">Ton coach <b>vente</b><br>écrit pour toi.</h2>
+  <h2 class="hero">Ton script manager<br><b>écrit pour toi.</b></h2>
   <div class="modes">
     <button id="modeCreer" class="on">Créer</button>
     <button id="modeAdapter">Adapter</button>
@@ -224,10 +246,14 @@
   </div>
  </div>
   <div id="scriptStatus" class="small"></div>
+  <div id="sm" class="hidden">
+    <div id="smHead" class="small"></div>
+    <div id="blocks"></div>
+  </div>
   <div id="chat"></div>
   <div id="replyBox" class="hidden">
-    <div class="row"><input id="replyText" type="text" placeholder="Ta réponse ou correction (ex : plus court)" style="background:#fff"><button class="plus" id="replyGo"></button></div>
-    <div class="small" style="margin-bottom:12px">Touche le script pour le modifier, ou demande à Viral juste au-dessus. <a href="#" id="newScript" style="color:var(--grey)">Recommencer à zéro</a></div>
+    <div class="row"><input id="replyText" type="text" placeholder="Demande au Script manager (ex : un hook plus choc)" style="background:#fff"><button class="plus" id="replyGo"></button></div>
+    <div class="small" style="margin-bottom:12px">Touche un bloc pour le modifier. ↻ change, ✕ supprime, ≡ déplace, + ajoute. <a href="#" id="newScript" style="color:var(--grey)">Recommencer à zéro</a></div>
     <button class="main" id="scriptNext">Suivant</button>
   </div>
 </section>
@@ -622,7 +648,7 @@ document.getElementById("montageGo").addEventListener("click", () => {
   openEditor(rushes.slice(), { ai: true, prompt });
 });
 
-// ----- Script : coach d'écriture IA (Groq, via le relais) -----
+// ----- Script manager (IA, via le relais) -----
 // Modèles Groq (gratuits), du meilleur au plus léger. Groq en retire parfois :
 // l'appli essaie dans l'ordre et retient celui qui marche.
 const AI_MODELS = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "meta-llama/llama-4-maverick-17b-128e-instruct", "qwen/qwen3-32b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"];
@@ -707,6 +733,7 @@ function setScriptMode(m) {
   document.getElementById("boxCreer").classList.toggle("hidden", m !== "creer");
   document.getElementById("boxAdapter").classList.toggle("hidden", m !== "adapter");
   resetChat();
+  if (typeof smRender === "function") smRender();
 }
 function resetChat() {
   chat = [];
@@ -783,7 +810,7 @@ async function viralRefs(idea, st) {
     keys.slice(30).forEach(k => delete lib[k]);
     try { localStorage.setItem("hookLib", JSON.stringify(lib)); } catch (e) {}
   }
-  st.textContent = "Le coach analyse les hooks et écrit ton script…";
+  st.textContent = "Le Script manager analyse les hooks viraux…";
   return { q, refs };
 }
 
@@ -861,47 +888,177 @@ async function askAI(content, shown) {
   }
 }
 
-document.getElementById("creerGo").onclick = async () => {
-  const idea = document.getElementById("ideaText").value.trim();
+// ===== Script manager : le script en blocs (Hook, Texte, Rehook, CTA) =====
+const SM_TYPES = { hook: "Hook", text: "Texte", rehook: "Rehook", cta: "CTA" };
+let sm = { blocks: [], alts: { hook: [], rehook: [], cta: [] }, refs: [], q: "", story: "", src0: "" };
+try { const s0 = JSON.parse(localStorage.getItem("smState") || "null"); if (s0 && s0.blocks) sm = s0; } catch (e) {}
+const smSave = () => { try { localStorage.setItem("smState", JSON.stringify(sm)); localStorage.setItem("lastScript", JSON.stringify(sm.blocks.map(b => b.text).filter(Boolean))); } catch (e) {} };
+const SM_RULES = `Tu es le Script manager de ${APP} : le meilleur expert des scripts TikTok viraux.
+Tu ne t'occupes QUE du texte dit face caméra. Tu ne parles jamais d'images, de plans, de montage, de musique, de tournage ni de texte à l'écran.
+Un script est une suite de blocs : "hook" (l'accroche des 2 premières secondes), "text" (le corps : 1 à 3 phrases courtes à l'oral par bloc), "rehook" (une relance au milieu qui relance la curiosité), "cta" (l'appel à l'action final).
+Les hooks, rehooks et CTA viennent TOUJOURS des vraies vidéos virales fournies : garde l'ESSENCE de la phrase d'origine (sa structure, son rythme, sa promesse, sa tension, sa façon d'ouvrir) et adapte seulement le sujet à l'histoire de l'utilisateur. Jamais copié mot pour mot, jamais dénaturé. "src" = le numéro de la vidéo d'origine (0 si aucune).
+Français oral naturel, phrases courtes, tutoiement si ça colle. Pas de guillemets, pas d'emoji, pas d'indications entre crochets.`;
+const smList = refs => refs.map((r, k) => `VIDÉO ${k + 1} — ${fmtNum(r.views)} vues${r.duration ? ", " + fmtDuration(r.duration) : ""}\nDescription : ${r.text || "(vide)"}\nCe qui est dit : ${r.said || "(pas de transcription)"}`).join("\n\n");
+const smJSON = t => JSON.parse(String(t).slice(String(t).indexOf("{"), String(t).lastIndexOf("}") + 1));
+async function smAsk(user, sys = SM_RULES) {
+  try { return await askClaude(sys, user); }
+  catch (e) { return await askModel([{ role: "system", content: sys }, { role: "user", content: user }]); }
+}
+const smViews = src => { const r = sm.refs[(+src || 0) - 1]; return r ? `inspiré d'une vidéo à ${fmtNum(r.views)} vues` : ""; };
+const SMI = {
+  chg: '<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>',
+  del: '<path d="M6 6l12 12M18 6L6 18"/>',
+  grip: '<path d="M5 9h14M5 15h14"/>',
+};
+const smIcon = n => `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${SMI[n]}</svg>`;
+function smRender() {
+  const box = document.getElementById("blocks");
+  document.getElementById("sm").classList.toggle("hidden", !sm.blocks.length);
+  document.getElementById("replyBox").classList.toggle("hidden", !sm.blocks.length);
+  document.getElementById("smHead").textContent = sm.refs.length ? `Basé sur ${sm.refs.length} vidéos virales « ${sm.q} »` : "";
+  const add = i => `<div class="badd" data-at="${i}"><button class="bplus" aria-label="Ajouter un bloc">+</button><span class="bpick hidden">${Object.entries(SM_TYPES).map(([k, l]) => `<button class="bt-${k}" data-add="${k}">${l}</button>`).join("")}</span></div>`;
+  box.innerHTML = add(0) + sm.blocks.map((b, i) => `<div class="blk bt-${b.type}" data-i="${i}">
+      <div class="bmain"><div class="bhead"><span class="btag">${SM_TYPES[b.type]}</span><span class="bsrc">${b.type !== "text" ? smViews(b.src) : ""}</span></div>
+      <div class="btext" contenteditable="true" spellcheck="false">${escapeHtml(b.text)}</div></div>
+      <div class="btools"><button data-a="chg" aria-label="Changer">${smIcon("chg")}</button><button data-a="del" aria-label="Supprimer">${smIcon("del")}</button><span class="bgrip" aria-label="Déplacer">${smIcon("grip")}</span></div>
+    </div>${add(i + 1)}`).join("");
+  box.querySelectorAll(".blk").forEach(el => {
+    const i = +el.dataset.i;
+    el.querySelector(".btext").oninput = e => { sm.blocks[i].text = e.target.innerText.trim(); smSave(); };
+    el.querySelector('[data-a="chg"]').onclick = () => smChange(i, el);
+    el.querySelector('[data-a="del"]').onclick = () => { sm.blocks.splice(i, 1); smSave(); smRender(); };
+    el.querySelector(".bgrip").addEventListener("pointerdown", e => smDrag(e, el, i));
+  });
+  box.querySelectorAll(".badd").forEach(el => {
+    el.querySelector(".bplus").onclick = () => { box.querySelectorAll(".bpick").forEach(x => x.classList.add("hidden")); el.querySelector(".bpick").classList.remove("hidden"); };
+    el.querySelectorAll("[data-add]").forEach(b => b.onclick = () => smAdd(+el.dataset.at, b.dataset.add));
+  });
+}
+// prochaine alternative pas encore utilisée (instantané) ; si on a tout vu, on en demande d'autres
+async function smNext(type) {
+  const used = new Set(sm.blocks.map(b => b.text));
+  let alt = (sm.alts[type] || []).find(a => !used.has(a.text));
+  if (alt) return alt;
   const st = document.getElementById("scriptStatus");
-  if (!idea) { st.textContent = "Écris d'abord ton idée."; return; }
-  resetChat();
-  addMsg(idea, true);
-  const btns = document.querySelectorAll("#creerGo, #adapterGo, #replyGo");
-  btns.forEach(b => b.disabled = true);
-  let refs = [], q = "";
-  try { ({ refs, q } = await viralRefs(idea, st)); }
-  catch (e) { st.textContent = "Recherche des vidéos virales impossible (" + String(e.message).slice(0, 80) + ") : le coach s'appuie sur les hooks qu'il connaît."; }
-  btns.forEach(b => b.disabled = false);
-  if (refs.length) {
-    const note = document.createElement("div");
-    note.className = "small";
-    note.textContent = `Basé sur ${refs.length} vidéos virales « ${q} » (${fmtNum(refs[refs.length - 1].views)} à ${fmtNum(refs[0].views)} vues), dont ${refs.filter(r => r.said).length} écoutées.`;
-    document.getElementById("chat").appendChild(note);
+  st.textContent = `${APP} cherche d'autres ${SM_TYPES[type].toLowerCase()}s viraux…`;
+  try {
+    const ans = await smAsk(`Histoire de l'utilisateur : ${sm.story}\n\nVidéos virales réelles de sa niche :\n\n${smList(sm.refs)}\n\nDonne 5 NOUVEAUX blocs "${type}" adaptés à son histoire, différents de ceux-ci : ${JSON.stringify([...used])}.\nRéponds UNIQUEMENT en JSON : {"items":[{"text":"...","src":2}]}`);
+    const items = (smJSON(ans).items || []).filter(x => x && x.text);
+    sm.alts[type] = [...(sm.alts[type] || []), ...items];
+    st.textContent = "";
+    return items[0] || null;
+  } catch (e) { st.textContent = `${APP} n'a pas trouvé d'autre proposition.`; return null; }
+}
+async function smChange(i, el) {
+  const b = sm.blocks[i];
+  el.classList.add("busy");
+  if (b.type === "text") {   // texte : réécrit autrement, même idée
+    try {
+      const ans = await smAsk(`Histoire : ${sm.story}\nScript actuel : ${JSON.stringify(sm.blocks.map(x => ({ type: x.type, text: x.text })))}\n\nRéécris autrement le bloc n°${i + 1} (même idée, même longueur, bien enchaîné avec le bloc d'avant et d'après).\nRéponds UNIQUEMENT en JSON : {"text":"..."}`);
+      const t = smJSON(ans).text;
+      if (t) b.text = String(t).trim();
+    } catch (e) {}
+  } else {
+    const alt = await smNext(b.type);
+    if (alt) { b.text = String(alt.text).trim(); b.src = alt.src; }
   }
-  const list = refs.map((r, k) => `VIDÉO ${k + 1} — ${fmtNum(r.views)} vues, ${fmtNum(r.likes)} likes${r.duration ? ", " + fmtDuration(r.duration) : ""}
-Description : ${r.text || "(vide)"}
-Ce qui est dit : ${r.said || "(pas de transcription)"}`).join("\n\n");
-  askAI(`Mon idée : ${idea}\n\n${refs.length ? `Vidéos virales réelles de ma niche (« ${q} »), de la plus vue à la moins vue :\n\n${list}` : "Aucune vidéo trouvée : appuie-toi sur les formats de hooks viraux éprouvés."}`, "");
+  smSave(); smRender();
+}
+async function smAdd(at, type) {
+  let b = { type, text: "" };
+  if (type !== "text") { const alt = await smNext(type); if (alt) b = { type, text: String(alt.text).trim(), src: alt.src }; }
+  sm.blocks.splice(at, 0, b);
+  smSave(); smRender();
+  if (!b.text) { const el = document.querySelector(`.blk[data-i="${at}"] .btext`); if (el) el.focus(); }
+}
+// déplacer un bloc : on tient ≡ et on glisse
+function smDrag(e, el, from) {
+  e.preventDefault();
+  const rows = [...document.querySelectorAll("#blocks .blk")], y0 = e.clientY;
+  const mids = rows.map(r => { const bb = r.getBoundingClientRect(); return bb.top + bb.height / 2; });
+  let to = from;
+  el.classList.add("drag");
+  const grip = e.currentTarget; grip.setPointerCapture(e.pointerId);
+  const move = ev => {
+    const dy = ev.clientY - y0, y = mids[from] + dy;
+    el.style.transform = `translateY(${dy}px)`;
+    to = mids.filter((m, k) => k !== from && m < y).length;
+    rows.forEach((r, k) => { if (k === from) return; const shift = (k > from && k <= to) ? -el.offsetHeight - 30 : (k < from && k >= to) ? el.offsetHeight + 30 : 0; r.style.transform = shift ? `translateY(${shift}px)` : ""; });
+  };
+  const up = () => {
+    grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); grip.removeEventListener("pointercancel", up);
+    const [b] = sm.blocks.splice(from, 1); sm.blocks.splice(to, 0, b);
+    smSave(); smRender();
+  };
+  grip.addEventListener("pointermove", move); grip.addEventListener("pointerup", up); grip.addEventListener("pointercancel", up);
+}
+// Création du script : vraies vidéos virales de la niche → blocs + réserve de hooks / rehooks / CTA adaptés
+async function smGenerate(story, viral) {
+  const st = document.getElementById("scriptStatus");
+  const btns = document.querySelectorAll("#creerGo, #adapterGo, #replyGo, #scriptNext");
+  btns.forEach(b => b.disabled = true);
+  document.getElementById("chat").innerHTML = "";
+  let refs = [], q = "";
+  try { ({ refs, q } = await viralRefs(story, st)); }
+  catch (e) { st.textContent = "Recherche des vidéos virales impossible : le Script manager s'appuie sur les formats viraux qu'il connaît."; }
+  if (viral) refs = [{ views: 0, text: "", said: viral, main: true }, ...refs];
+  st.textContent = `${APP} écrit ton script…`;
+  try {
+    const ans = await smAsk(`Histoire / produit de l'utilisateur : ${story}
+${viral ? "\nLa VIDÉO 1 est la vidéo virale qu'il veut reprendre : son hook, sa structure et son CTA servent de base au script (adaptés à son histoire).\n" : ""}
+Vraies vidéos virales de sa niche${q ? ` (« ${q} »)` : ""} :
+
+${smList(refs) || "(aucune : utilise les formats de hooks viraux les plus éprouvés, src 0)"}
+
+Écris le script en blocs : 1 hook, des blocs "text" courts, 1 ou 2 rehooks bien placés, 1 cta final. 20 à 45 secondes à l'oral.
+Prépare aussi une réserve d'alternatives déjà adaptées à son histoire : 8 hooks, 5 rehooks, 5 cta, chacun inspiré d'une vidéo différente quand c'est possible.
+Réponds UNIQUEMENT en JSON :
+{"blocks":[{"type":"hook","text":"...","src":1},{"type":"text","text":"..."},{"type":"rehook","text":"...","src":3},{"type":"cta","text":"...","src":2}],
+"alts":{"hook":[{"text":"...","src":4}],"rehook":[{"text":"...","src":5}],"cta":[{"text":"...","src":6}]}}`);
+    const j = smJSON(ans);
+    const ok = x => x && SM_TYPES[x.type] && String(x.text || "").trim();
+    sm = { blocks: (j.blocks || []).filter(ok).map(x => ({ type: x.type, text: String(x.text).trim(), src: x.src })), alts: { hook: [], rehook: [], cta: [], ...(j.alts || {}) }, refs, q, story };
+    if (!sm.blocks.length) throw new Error("script vide");
+    st.textContent = "";
+    smSave(); smRender();
+  } catch (e) { st.textContent = `${APP} n'a pas pu écrire le script (${String(e.message).slice(0, 80)}). Réessaie.`; }
+  btns.forEach(b => b.disabled = false);
+}
+document.getElementById("creerGo").onclick = () => {
+  const idea = document.getElementById("ideaText").value.trim();
+  if (!idea) { document.getElementById("scriptStatus").textContent = "Écris d'abord ton idée."; return; }
+  smGenerate(idea);
 };
 document.getElementById("adapterGo").onclick = () => {
   const viral = document.getElementById("viralText").value.trim();
   const subject = document.getElementById("mySubject").value.trim();
   if (!viral || !subject) { document.getElementById("scriptStatus").textContent = "Il faut la vidéo virale ET ton sujet."; return; }
-  resetChat();
-  askAI(`Vidéo TikTok virale à reprendre :\n${viral}\n\nMon produit (à vendre) : ${subject}`, "Adapter pour : " + subject);
+  smGenerate(subject, viral);
 };
 document.getElementById("scriptNext").onclick = () => {
-  const plans = scriptPlans(lastScriptText());
-  saveScript();
-  if (window.openCameraWithScript) window.openCameraWithScript(plans);
+  smSave();
+  if (window.openCameraWithScript) window.openCameraWithScript(sm.blocks.map(b => b.text).filter(Boolean));
 };
-const sendReply = () => {
-  const r = document.getElementById("replyText");
-  if (!r.value.trim()) return;
-  askAI(r.value.trim(), r.value.trim());
+// Questions et demandes au Script manager : il ne parle que du script
+const sendReply = async () => {
+  const r = document.getElementById("replyText"), q = r.value.trim();
+  if (!q || !sm.blocks.length) return;
   r.value = "";
+  addMsg(q, true);
+  const st = document.getElementById("scriptStatus");
+  st.textContent = `${APP} réfléchit…`;
+  try {
+    const ans = await smAsk(`Histoire : ${sm.story}\nScript actuel (blocs) : ${JSON.stringify(sm.blocks.map(x => ({ type: x.type, text: x.text, src: x.src })))}\n\nVidéos virales de la niche :\n\n${smList(sm.refs)}\n\nDemande de l'utilisateur : ${q}
+Si la demande concerne autre chose que le texte du script (montage, images, tournage…), ne change rien et dis-le gentiment.
+Réponds UNIQUEMENT en JSON : {"blocks":[...les blocs, modifiés si la demande le veut, sinon null...],"reponse":"1 ou 2 phrases en français"}`);
+    const j = smJSON(ans);
+    if (Array.isArray(j.blocks) && j.blocks.length) { sm.blocks = j.blocks.filter(x => x && SM_TYPES[x.type] && x.text).map(x => ({ type: x.type, text: String(x.text).trim(), src: x.src })); smSave(); smRender(); }
+    addMsg(j.reponse || "C'est fait.", false);
+  } catch (e) { addMsg(`${APP} n'a pas pu répondre. Réessaie.`, false); }
+  st.textContent = "";
 };
+document.getElementById("newScript").onclick = e => { e.preventDefault(); sm = { blocks: [], alts: { hook: [], rehook: [], cta: [] }, refs: [], q: "", story: "" }; smSave(); document.getElementById("chat").innerHTML = ""; smRender(); };
+smRender();
 document.getElementById("replyGo").onclick = sendReply;
 document.getElementById("replyText").addEventListener("keydown", e => { if (e.key === "Enter") sendReply(); });
 
