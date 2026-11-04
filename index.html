@@ -80,7 +80,7 @@
   .rush .grip { width: 40px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 20px; color: var(--grey); touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
   .rush .n { font-weight: 800; width: 18px; text-align: center; }
   .rush .name { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--grey); }
-  .rush button { width: 36px; height: 36px; border: 0; border-radius: 18px; background: var(--beige); color: var(--ink); font-size: 14px; padding: 0; }
+  .rush button { width: 36px; height: 36px; border: 0; border-radius: 18px; background: var(--beige); color: var(--ink); font-size: 14px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   #montageInfo b { color: var(--ink); font-size: 13px; }
   /* Caméra (reste sombre pour bien voir l'image) */
   #cam { position: fixed; inset: 0; background: #000; z-index: 60; overflow: hidden; touch-action: none; }
@@ -242,13 +242,17 @@
  <div class="card">
   <div class="label">Montage</div>
   <h2 class="hero">Monte ta vidéo<br><b>en un geste.</b></h2>
+  <div class="modes">
+    <button id="mModeIA" class="on">Montage IA</button>
+    <button id="mModeMan">Montage manuel</button>
+  </div>
   <textarea id="montagePrompt" placeholder="Ton prompt pour le montage IA (ex : 30 s max, garde seulement les meilleures phrases, légendes karaoké en bas, rythme énergique)"></textarea>
   <input id="montageFile" type="file" accept="video/*" multiple class="hidden">
   <button class="main alt" id="montageAdd" style="margin-bottom:10px">+ Ajouter des rushs</button>
   <div id="montageInfo" class="small"></div>
-  <button class="main" id="montageGo" disabled>Montage IA</button>
-  <button class="main alt" id="montageEdit" style="margin-top:8px" disabled>Table de montage</button>
-  <div id="montageStatus" class="small">Ajoute tes rushs, puis choisis : montage IA (avec légendes) ou table de montage.</div>
+  <button class="main" id="montageGo" disabled>Lancer le montage IA</button>
+  <button class="main hidden" id="montageEdit">Ouvrir la table de montage</button>
+  <div id="montageStatus" class="small"></div>
   <div id="montageResult"></div>
  </div>
 </section>
@@ -355,14 +359,34 @@ const mStatus = t => document.getElementById("montageStatus").textContent = t;
 let rushes = [];
 const VIRAL_PROMPT = "Montage TikTok viral, niveau pro, rythme très rapide.\nCoupe : enlève tous les blancs, les hésitations et les phrases répétées. Pas un temps mort.\nZooms : un gros zoom punch sur chaque mot fort, toutes les 2 à 3 secondes. Une secousse sur les moments choc. Un flash à chaque changement d'idée.\nGros textes : les mots clés en ÉNORMES majuscules, qui arrivent avec rebond, glissent ou tremblent. 1 à 3 mots maximum, couleurs vives, contour épais.\nMotion design qui illustre le sens de chaque mot : si je dis \"feu\", des flammes animées ; si je parle de montage, une table de montage animée (ligne du temps, clips qui glissent, curseur qui avance) ; si je parle d'argent, des billets ou un compteur qui monte ; si je cite un chiffre, il défile en grand ; si je parle d'un objet, d'une appli ou d'une image, dessine-le en illustration animée à côté de moi ; si je fais une liste, les points apparaissent un par un.\nAccroche : un titre choc animé dans la première seconde. Fin : un appel à l'action animé (« Abonne-toi », flèche, rebond).\nChaque animation est différente, propre et fluide, comme un monteur After Effects pro. Légendes style Boîte, en bas.";
 document.getElementById("montagePrompt").value = localStorage.getItem("montagePrompt") || VIRAL_PROMPT;
-document.getElementById("montageEdit").addEventListener("click", () => openEditor(rushes.slice()));
-document.getElementById("montageAdd").addEventListener("click", () => document.getElementById("montageFile").click());
+// Deux façons de monter : l'IA (avec ton prompt) ou à la main (la table de montage s'ouvre directement)
+let montMode = localStorage.getItem("montMode") || "ia", openAfterPick = false;
+function setMontMode(m) {
+  montMode = m; localStorage.setItem("montMode", m);
+  const ia = m === "ia";
+  document.getElementById("mModeIA").classList.toggle("on", ia);
+  document.getElementById("mModeMan").classList.toggle("on", !ia);
+  ["montagePrompt", "montageGo", "montageAdd"].forEach(id => document.getElementById(id).classList.toggle("hidden", !ia));
+  document.getElementById("montageEdit").classList.toggle("hidden", ia);
+  document.getElementById("montageStatus").textContent = ia ? "Écris ton prompt, ajoute tes rushs, puis lance : l'IA monte tout." : "Ajoute tes rushs : la table de montage s'ouvre directement.";
+}
+document.getElementById("mModeIA").onclick = () => setMontMode("ia");
+document.getElementById("mModeMan").onclick = () => setMontMode("man");
+document.getElementById("montageEdit").addEventListener("click", () => {
+  if (rushes.length) return openEditor(rushes.slice());
+  openAfterPick = true; document.getElementById("montageFile").click();
+});
+document.getElementById("montageAdd").addEventListener("click", () => { openAfterPick = montMode === "man"; document.getElementById("montageFile").click(); });
 document.getElementById("montageFile").addEventListener("change", e => {
-  rushes.push(...[...e.target.files].map(f => ({ file: f, url: URL.createObjectURL(f) })));
+  const added = [...e.target.files];
+  rushes.push(...added.map(f => ({ file: f, url: URL.createObjectURL(f) })));
   e.target.value = ""; // permet de rajouter d'autres rushs ensuite
   drawRushes();
   makeThumbs();
+  if (openAfterPick && added.length) openEditor(rushes.slice());
+  openAfterPick = false;
 });
+setMontMode(montMode);
 
 // Petite image de chaque rush (dessinée une seule fois)
 async function makeThumb(r) {
@@ -390,7 +414,6 @@ async function makeThumbs() {
 function drawRushes() {
   const box = document.getElementById("montageInfo");
   document.getElementById("montageGo").disabled = !rushes.length;
-  document.getElementById("montageEdit").disabled = !rushes.length;
   box.innerHTML = rushes.length ? `<b>${rushes.length} rush(s). Glisse ☰ pour changer l'ordre.</b>` : "";
   rushes.forEach((r, i) => {
     const row = document.createElement("div");
@@ -398,7 +421,7 @@ function drawRushes() {
     row.innerHTML = `<span class="n">${i + 1}</span>
       ${r.thumb ? `<img class="th" src="${r.thumb}" alt="">` : `<span class="th"></span>`}
       <span class="name">${escapeHtml(r.file.name)}<br>${(r.file.size / 1e6).toFixed(1)} Mo</span>
-      <button class="del"></button><span class="grip">☰</span>`;
+      <button class="del" aria-label="Supprimer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button><span class="grip">☰</span>`;
     row.querySelector(".del").onclick = () => { URL.revokeObjectURL(r.url); rushes.splice(i, 1); drawRushes(); };
     row.querySelector(".grip").addEventListener("pointerdown", e => startDrag(e, row, i));
     box.appendChild(row);
