@@ -1187,9 +1187,11 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     audios.forEach(a => add(a.ref, a.start, a.in, a.out, 1, a.vol));
   }
   function stopAudio() { nodes.forEach(n => { try { n.stop(); } catch (e) {} }); nodes = []; }
+  let lastSet = -1;
   function setScroll(time) {
     programmatic = true;
     tl.scrollLeft = time * PPS;
+    lastSet = tl.scrollLeft;
     requestAnimationFrame(() => (programmatic = false));
   }
   function refreshAt() { drawOverlays(); drawCaption(); showTime(); if (!playing) updKf(); }
@@ -1232,18 +1234,22 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     t = Math.min(total(), playT0 + Math.max(0, audioCtx().currentTime - ac0));
     if (t >= total() - 0.001) { playing = false; $("edPlay").innerHTML = ic("play", 30); stopAudio(); closeFeeds(); t = total(); setScroll(t); refreshAt(); return; }
     renderPlaying(t);
-    setScroll(t);
+    if (!tlTouch && performance.now() > freeUntil) setScroll(t);   // la ligne suit la lecture, sauf si tu la fais glisser (elle revient 0,8 s après)
     refreshAt();
     requestAnimationFrame(loop);
   }
 
   // Faire défiler = se déplacer (bloqué à la fin du montage)
-  let scrollTimer;
+  let scrollTimer, tlTouch = false, freeUntil = 0;
+  tl.addEventListener("touchstart", e => { if (e.touches.length === 1) tlTouch = true; }, { passive: true });
+  const touchOff = e => { if (!e.touches.length) { tlTouch = false; freeUntil = performance.now() + 800; } };
+  tl.addEventListener("touchend", touchOff, { passive: true });
+  tl.addEventListener("touchcancel", touchOff, { passive: true });
   tl.addEventListener("scroll", () => {
     const max = total() * PPS;
     if (tl.scrollLeft > max) tl.scrollLeft = max;
-    if (programmatic || dragging) return;
-    if (playing) pause();
+    if (playing) { if (Math.abs(tl.scrollLeft - lastSet) > 1.5 && !dragging) freeUntil = performance.now() + 800; return; }   // pendant la lecture : tu regardes ailleurs sans arrêter la vidéo
+    if (programmatic || dragging) return;   // pendant la lecture : on regarde ailleurs sans arrêter la vidéo
     t = Math.min(tl.scrollLeft / PPS, total());
     refreshAt();
     clearTimeout(scrollTimer);
