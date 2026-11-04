@@ -122,18 +122,20 @@
     recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
     recorder.onstop = () => {
       const dur = (Date.now() - recStart) / 1000;
-      if (dur > 0.3) clips.push({ blob: new Blob(chunks, { type: recorder.mimeType || mime }), dur });
+      if (dur > 0.3) { clips.push({ blob: new Blob(chunks, { type: recorder.mimeType || mime }), dur }); promptGo(1); }   // plan filmé : le prompteur passe au plan suivant
       recorder = null;
       drawClips();
     };
     recorder.start(250);
     recStart = Date.now();
+    promptRoll(true);
     $("camShoot").classList.add("rec");
     timer = setInterval(drawClips, 100);
   }
   function stopRec() {
     latched = false;
     if (!recorder) return;
+    promptRoll(false);
     clearInterval(timer);
     $("camShoot").classList.remove("rec");
     recorder.stop();
@@ -169,7 +171,7 @@
     $("camNext").classList.toggle("hidden", !clips.length || !!recorder);
   }
 
-  $("camUndo").onclick = () => { clips.pop(); drawClips(); };
+  $("camUndo").onclick = () => { clips.pop(); drawClips(); promptGo(-1); };
 
   // (les deux modes sont maintenant sur le même bouton)
 
@@ -194,7 +196,7 @@
     open();
   };
   $("camNext").onclick = () => {
-    if (!insertCb) return $("camChoice").classList.remove("hidden");
+    if (!insertCb) return toMontage();   // Suivant : les plans partent directement dans Montage
     const fs = files(), cb = insertCb;
     clips.length = 0;
     insertCb = null; $("cam").style.zIndex = "";
@@ -220,6 +222,56 @@
     } catch (e) { /* annulé */ }
   };
 
+
+  // ----- Prompteur : ton script défile pendant que tu filmes, un plan à la fois -----
+  let plans = [], pIdx = 0, pOff = 0, pRaf = 0, pLast = 0;
+  let pSpeed = +(localStorage.getItem("cpSpeed") || 3), pSize = +(localStorage.getItem("cpSize") || 1);
+  const SPEEDS = [0, 18, 26, 36, 48, 62, 80];   // pixels par seconde
+  const SIZES = [22, 27, 33];
+  const lastPlans = () => { try { return JSON.parse(localStorage.getItem("lastScript") || "[]"); } catch (e) { return []; } };
+  function loadPrompt(list, show) {
+    plans = (list || []).filter(Boolean); pIdx = 0;
+    $("camPromptBtn").classList.toggle("hidden", !plans.length);
+    $("camPrompt").classList.toggle("hidden", !(plans.length && show));
+    promptDraw(); promptCls();
+  }
+  const promptCls = () => cam.classList.toggle("wp", !$("camPrompt").classList.contains("hidden"));
+  function promptDraw() {
+    if (!plans.length) return;
+    const tx = $("cpText");
+    tx.style.fontSize = SIZES[pSize] + "px";
+    tx.innerHTML = "";
+    tx.append(plans[pIdx] || "");
+    if (plans[pIdx + 1]) { const n = document.createElement("i"); n.textContent = "\n\n" + plans[pIdx + 1]; tx.append(n); }
+    $("cpNum").textContent = `Plan ${Math.min(pIdx + 1, plans.length)}/${plans.length}`;
+    $("cpSpeed").textContent = "Vitesse " + pSpeed;
+    pOff = $("cpView").clientHeight * 0.22;
+    tx.style.transform = `translateY(${pOff}px)`;
+  }
+  function promptGo(d) { if (!plans.length) return; pIdx = Math.max(0, Math.min(plans.length - 1, pIdx + d)); promptDraw(); }
+  function promptRoll(on) {
+    cancelAnimationFrame(pRaf);
+    if (!on || !plans.length || $("camPrompt").classList.contains("hidden")) return;
+    pLast = performance.now();
+    const tick = now => {
+      pOff -= SPEEDS[pSpeed] * (now - pLast) / 1000; pLast = now;
+      const tx = $("cpText"), min = -tx.scrollHeight + 20;
+      if (pOff < min) pOff = min;
+      tx.style.transform = `translateY(${pOff}px)`;
+      pRaf = requestAnimationFrame(tick);
+    };
+    pRaf = requestAnimationFrame(tick);
+  }
+  $("cpPrev").onclick = () => promptGo(-1);
+  $("cpNext").onclick = () => promptGo(1);
+  $("cpSlow").onclick = () => { pSpeed = Math.max(1, pSpeed - 1); localStorage.setItem("cpSpeed", pSpeed); $("cpSpeed").textContent = "Vitesse " + pSpeed; };
+  $("cpFast").onclick = () => { pSpeed = Math.min(6, pSpeed + 1); localStorage.setItem("cpSpeed", pSpeed); $("cpSpeed").textContent = "Vitesse " + pSpeed; };
+  $("cpSize").onclick = () => { pSize = (pSize + 1) % SIZES.length; localStorage.setItem("cpSize", pSize); promptDraw(); };
+  $("cpHide").onclick = () => { $("camPrompt").classList.add("hidden"); promptRoll(false); promptCls(); };
+  $("camPromptBtn").onclick = () => { $("camPrompt").classList.toggle("hidden"); promptDraw(); promptCls(); };
+  // Depuis Script : la caméra s'ouvre avec ton script en prompteur
+  window.openCameraWithScript = list => { loadPrompt(list, true); open(); setTimeout(promptDraw, 300); };
+
   function msg(t) {
     const m = $("camMsg");
     m.textContent = t;
@@ -227,7 +279,7 @@
     setTimeout(() => m.classList.add("hidden"), 3500);
   }
 
-  $("filmOpen").onclick = open;
+  $("filmOpen").onclick = () => { loadPrompt(lastPlans(), false); open(); };
   $("camClose").onclick = () => { if (insertCb) { insertCb = null; $("cam").style.zIndex = ""; } close(); };
   $("camFlip").onclick = flip;
   document.addEventListener("visibilitychange", () => { if (document.hidden && recorder) stopRec(); });

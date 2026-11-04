@@ -65,3 +65,9 @@
 ## Ajuster + Recadrer façon Photos (fait)
 - Ajuster : ronds à icônes + règle graduée (zoom, rotation, position, opacité ; luminosité, contraste, saturation, chaleur pour plans et superpositions). Double-tap = remise à zéro.
 - Recadrer : cadre à poignées + grille, formats (Original, Libre, Carré, 9:16, 4:5, 16:9 ; 9:16 imposé pour la vidéo principale), redresser, pivoter 90°, miroir. Le suivi du visage tient compte du recadrage.
+
+## Parcours « Suivant » + prompteur + recherche plus virale (fait)
+- Recherche : mot-clé + 2 variantes (3 x 100 vidéos), seuil 100 k / 300 k / 1 M (300 k par défaut), 60 meilleures.
+- Vidéo ouverte → Suivant → Script. Script modifiable directement ; Suivant → caméra avec prompteur.
+- Prompteur : transparent en haut, défile pendant qu'on filme, plan par plan (passe au suivant après chaque prise), vitesse, taille, masquable.
+- Caméra : Suivant → plans directement dans Montage.

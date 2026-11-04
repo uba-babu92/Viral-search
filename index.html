@@ -70,6 +70,8 @@
   /* Script : discussion */
   .msg { background: var(--white); border-radius: 22px; padding: 14px 16px; margin: 8px 0; font-size: 15px; line-height: 1.45; white-space: pre-wrap; }
   .msg.me { background: var(--ink); color: var(--white); margin-left: 40px; }
+  .msg .mtext { outline: none; border-radius: 12px; margin: -4px -6px; padding: 4px 6px; -webkit-user-select: text; user-select: text; }
+  .msg .mtext:focus { background: var(--beige); }
   .msg button { margin-top: 10px; padding: 7px 14px; border: 0; border-radius: 999px; background: var(--beige); color: var(--ink); font-weight: 600; }
   /* Film */
   .bigshot { width: 92px; height: 92px; border-radius: 46px; border: 6px solid var(--beige); background: var(--coral); display: block; margin: 8px auto 4px; box-shadow: 0 8px 24px #ff5a4e55; }
@@ -106,6 +108,13 @@
   #cam .cmodes { display: flex; gap: 18px; }
   #cam .cmodes button { border: 0; background: none; color: #fff9; font-size: 14px; font-weight: 600; text-shadow: 0 1px 3px #000; }
   #cam .cmodes button.on { color: #fff; }
+  #cam.wp #camTime { top: auto; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 150px); }
+  #camPrompt { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 54px); left: 10px; right: 10px; background: rgba(0,0,0,.38); border-radius: 18px; overflow: hidden; }
+  #cpView { position: relative; height: 26vh; overflow: hidden; -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 80%, transparent); mask-image: linear-gradient(transparent, #000 14%, #000 80%, transparent); }
+  #cpText { position: absolute; left: 16px; right: 16px; top: 0; color: #fff; font-weight: 700; line-height: 1.35; text-shadow: 0 1px 3px #0008; white-space: pre-wrap; will-change: transform; }
+  #cpText i { font-style: normal; opacity: .4; }
+  #camPrompt .cpbar { display: flex; align-items: center; gap: 6px; padding: 4px 8px 8px; color: #fffc; font-size: 12px; font-weight: 600; }
+  #camPrompt .cpbar button { width: 32px; height: 32px; border-radius: 16px; border: 0; background: #ffffff22; color: #fff; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0; }
   #camChoice { position: absolute; inset: 0; background: #0008; display: flex; align-items: flex-end; }
   #camChoice .sheet { width: 100%; background: var(--beige); border-radius: 28px 28px 0 0; padding: 18px 16px max(18px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; }
   #camChoice .sheet button.main.alt { background: var(--white); color: var(--ink); }
@@ -161,6 +170,11 @@
     <button id="typeVideos" class="on">Vidéos</button>
     <button id="typeCarrousels">Carrousels</button>
   </div>
+  <div class="modes" id="viewModes">
+    <button data-mv="100000">100 k+</button>
+    <button data-mv="300000" class="on">300 k+</button>
+    <button data-mv="1000000">1 M+</button>
+  </div>
   <button class="main" id="go">Chercher</button>
  </div>
   <div id="status"></div>
@@ -193,7 +207,8 @@
   <div id="chat"></div>
   <div id="replyBox" class="hidden">
     <div class="row"><input id="replyText" type="text" placeholder="Ta réponse ou correction (ex : plus court)" style="background:#fff"><button class="plus" id="replyGo"></button></div>
-    <div class="small"><a href="#" id="newScript" style="color:var(--grey)">Recommencer à zéro</a></div>
+    <div class="small" style="margin-bottom:12px">Touche le script pour le modifier, ou demande à Viral juste au-dessus. <a href="#" id="newScript" style="color:var(--grey)">Recommencer à zéro</a></div>
+    <button class="main" id="scriptNext">Suivant</button>
   </div>
 </section>
 
@@ -204,7 +219,7 @@
   <h2 class="hero">Filme<br><b>plan par plan.</b></h2>
   <div class="chips"><span class="chip">Avant / arrière</span><span class="chip">0.5x · 1x · 3x</span><span class="chip">Maintenir ou toucher</span></div>
   <button class="bigshot" id="filmOpen" aria-label="Ouvrir la caméra"></button>
-  <div class="small" style="text-align:center">Rien n'est posté : tes plans vont dans Montage ou dans ta galerie.</div>
+  <div class="small" style="text-align:center">Ton dernier script s'affiche en prompteur. Quand tu as fini, touche Suivant.</div>
  </div>
 </section>
 
@@ -213,9 +228,22 @@
   <div class="ctop">
     <button id="camClose">✕</button>
     <div id="camBar"></div>
+    <button id="camPromptBtn" class="hidden" aria-label="Prompteur"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 11h16M4 16h10"/></svg></button>
     <button id="camFlip"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg></button>
   </div>
   <div id="camTime"></div>
+  <div id="camPrompt" class="hidden">
+    <div id="cpView"><div id="cpText"></div></div>
+    <div class="cpbar">
+      <button id="cpPrev" aria-label="Plan précédent"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
+      <span id="cpNum"></span>
+      <button id="cpNext" aria-label="Plan suivant"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg></button>
+      <span style="flex:1"></span>
+      <button id="cpSlow" aria-label="Plus lent">−</button><span id="cpSpeed"></span><button id="cpFast" aria-label="Plus vite">+</button>
+      <button id="cpSize" aria-label="Taille du texte">Aa</button>
+      <button id="cpHide" aria-label="Masquer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+  </div>
   <div id="camMsg" class="hidden"></div>
   <div class="cbottom">
     <div id="camLenses"></div>
@@ -264,9 +292,9 @@
     <div id="viewerGallery" class="hidden"></div>
     <div id="viewerInfo" class="small"></div>
     <textarea id="viewerBrand" class="brand" placeholder="Ta marque / ton sujet : qui tu es, ce que tu vends ou mets en avant, ton style, ton public…"></textarea>
-    <button class="main" id="viewerGo">Adapter</button>
+    <button class="main" id="viewerGo">Suivant</button>
     <div id="viewerStatus" class="small"></div>
-    <details id="viewerAnalyseBox"><summary>Analyser le style</summary><div id="viewerAnalyse"></div></details>
+    <details id="viewerAnalyseBox" class="hidden"><summary>Analyser le style</summary><div id="viewerAnalyse"></div></details>
   </div>
 </div>
 
@@ -274,12 +302,16 @@
 // Bloque le zoom à deux doigts (iPhone)
 ["gesturestart", "gesturechange", "gestureend"].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
 document.addEventListener("touchmove", e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
-const MIN_VIEWS = 50000;   // vues minimum
+let MIN_VIEWS = +(localStorage.getItem("minViews") || 300000);   // vues minimum (réglable : 100 k, 300 k, 1 M)
 const WANTED = 50;         // nombre de résultats souhaité
-const FETCH_VIDEOS = 150;  // vidéos demandées à Apify (on jette celles sous MIN_VIEWS)
+const FETCH_VIDEOS = 100;  // vidéos demandées par mot-clé (3 mots-clés : ~300 vidéos, on jette celles sous MIN_VIEWS)
 const FETCH_PHOTOS = 100;
 const VIDEO_ACTOR = "mu0i~tiktok-search-scraper";
 const PHOTO_ACTOR = "scrapingmonkey~tiktok-scraper";
+document.querySelectorAll("#viewModes [data-mv]").forEach(b => {
+  b.classList.toggle("on", +b.dataset.mv === +(localStorage.getItem("minViews") || 300000));
+  b.onclick = () => { MIN_VIEWS = +b.dataset.mv; localStorage.setItem("minViews", MIN_VIEWS); document.querySelectorAll("#viewModes [data-mv]").forEach(x => x.classList.toggle("on", x === b)); };
+});
 // Nom de l'appli : change-le ici, il s'affiche partout (jamais le nom des services utilisés)
 const APP = "Viral";
 document.querySelector(".brandname").lastChild.textContent = APP;
@@ -697,22 +729,43 @@ function adaptVideo(i) {
   document.getElementById("mySubject").focus();
 }
 
-function addMsg(text, me) {
+function addMsg(text, me, ci) {
   const d = document.createElement("div");
   d.className = "msg" + (me ? " me" : "");
-  // **gras** affiché en gras, sans les étoiles
-  d.innerHTML = escapeHtml(text).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^#{1,4}\s*/gm, "");
-  if (!me) {
+  const plain = text.replace(/\*\*(.+?)\*\*/g, "$1").replace(/^#{1,4}\s*/gm, "");
+  if (me) d.textContent = plain;
+  else {   // le script est modifiable : tu tapes directement dedans
+    const tx = document.createElement("div");
+    tx.className = "mtext"; tx.contentEditable = "true"; tx.spellcheck = false;
+    tx.textContent = plain;
+    tx.oninput = () => { if (ci !== undefined && chat[ci]) chat[ci].content = tx.innerText; saveScript(); };
     const b = document.createElement("button");
     b.textContent = "Copier";
-    const plain = text.replace(/\*\*(.+?)\*\*/g, "$1").replace(/^#{1,4}\s*/gm, "");
-    b.onclick = () => navigator.clipboard.writeText(plain).then(() => b.textContent = "Copié ");
-    d.appendChild(document.createElement("br"));
-    d.appendChild(b);
+    b.onclick = () => navigator.clipboard.writeText(tx.innerText).then(() => b.textContent = "Copié");
+    d.append(tx, b);
   }
   document.getElementById("chat").appendChild(d);
   d.scrollIntoView({ behavior: "smooth" });
 }
+
+// Le dernier script (modifié ou pas) découpé en plans pour le prompteur
+function lastScriptText() {
+  const all = [...document.querySelectorAll("#chat .mtext")];
+  return all.length ? all[all.length - 1].innerText : "";
+}
+function scriptPlans(text) {
+  let lines = String(text).split("\n").map(l => l.replace(/\*\*/g, "").replace(/^#{1,4}\s*/, "").trim()).filter(Boolean);
+  // s'il y a une partie SCRIPT (mode Créer), on ne garde qu'elle
+  const a = lines.findIndex(l => /^(\d\.\s*)?script\b/i.test(l));
+  if (a >= 0) {
+    const rest = lines.slice(a + 1), b = rest.findIndex(l => /^(\d\.\s*)?(hooks?\s+alternatifs?|l[ée]gende|analyse)/i.test(l));
+    lines = b >= 0 ? rest.slice(0, b) : rest;
+  }
+  const voix = lines.map(l => (l.match(/voix\s*:\s*(.+?)(?:\s*\/\s*(?:\[|texte)|\s*\[|$)/i) || [])[1]).filter(Boolean).map(x => x.replace(/^["«“]\s*|\s*["»”]$/g, ""));
+  if (voix.length) return voix;
+  return lines.filter(l => l.length > 3 && !/^\[.*\]$/.test(l) && !/^(plan\s*\d+|hook|légende|vidéo\s*\d)/i.test(l)).map(l => l.replace(/\s*\[[^\]]*\]\s*/g, " ").trim()).filter(Boolean);
+}
+function saveScript() { try { localStorage.setItem("lastScript", JSON.stringify(scriptPlans(lastScriptText()))); } catch (e) {} }
 
 async function askAI(content, shown) {
   const st = document.getElementById("scriptStatus");
@@ -728,7 +781,8 @@ async function askAI(content, shown) {
       catch (e) { st.textContent = `${APP} réfléchit encore…`; answer = await askModel([{ role: "system", content: VIRAL_EXPERT }, ...chat]); }
     } else answer = await askModel(chat);
     chat.push({ role: "assistant", content: answer });
-    addMsg(answer, false);
+    addMsg(answer, false, chat.length - 1);
+    saveScript();
     st.textContent = "";
     document.getElementById("replyBox").classList.remove("hidden");
   } catch (e) {
@@ -768,6 +822,11 @@ document.getElementById("adapterGo").onclick = () => {
   if (!viral || !subject) { document.getElementById("scriptStatus").textContent = "Il faut la vidéo virale ET ton sujet."; return; }
   resetChat();
   askAI(`Vidéo TikTok virale à reprendre :\n${viral}\n\nMon produit (à vendre) : ${subject}`, "Adapter pour : " + subject);
+};
+document.getElementById("scriptNext").onclick = () => {
+  const plans = scriptPlans(lastScriptText());
+  saveScript();
+  if (window.openCameraWithScript) window.openCameraWithScript(plans);
 };
 const sendReply = () => {
   const r = document.getElementById("replyText");
@@ -915,7 +974,16 @@ async function search(qArg) {
   let data;
   try {
     if (searchType === "videos") {
-      data = await runActor(VIDEO_ACTOR, { queries: [q], maxVideos: FETCH_VIDEOS });
+      // le mot-clé + 2 variantes trouvées par Viral : plus de chances de tomber sur les gros cartons
+      let qs = [q];
+      try {
+        const v = await askModel([{ role: "system", content: "Donne 2 variantes de recherche TikTok (2 à 4 mots chacune) pour trouver les vidéos les plus virales sur ce sujet : une proche, une plus large ou dans l'autre langue (français / anglais). Une par ligne, sans numéro, sans hashtag, sans ponctuation." }, { role: "user", content: q }]);
+        qs.push(...v.split("\n").map(x => x.replace(/^[-*\d.)\s]+/, "").replace(/[#"«»]/g, "").trim()).filter(x => x && x.length < 50 && x.toLowerCase() !== q.toLowerCase()).slice(0, 2));
+      } catch (e) { /* on cherche juste le mot-clé */ }
+      status.textContent = `Recherche en cours : ${qs.map(x => "« " + x + " »").join(", ")} (1 à 2 min)...`;
+      const parts = await Promise.all(qs.map(x => runActor(VIDEO_ACTOR, { queries: [x], maxVideos: FETCH_VIDEOS }).catch(e => (qs.length === 1 ? Promise.reject(e) : []))));
+      const seen = new Set();
+      data = parts.flat().filter(v => { const id = String(v.id ?? v.webVideoUrl ?? v.url ?? Math.random()); if (seen.has(id)) return false; seen.add(id); return true; });
       showRaw(data[0]);
       items = data.map(normalize);
     } else {
@@ -926,8 +994,9 @@ async function search(qArg) {
     // Seulement les vidéos virales (si le scraper donne les vues)
     if (items.some(v => v.views > 0)) items = items.filter(v => v.views >= MIN_VIEWS);
     items.sort((a, b) => b.views - a.views);
-    status.textContent = `${items.length} résultat(s) à ${fmtNum(MIN_VIEWS)} vues ou plus (sur ${data.length} trouvés).`
-      + (items.length < WANTED ? " Sujet un peu petit : essaie un mot-clé plus large." : "");
+    items = items.slice(0, 60);
+    status.textContent = `${items.length} vidéo(s) à ${fmtNum(MIN_VIEWS)} vues ou plus (sur ${data.length} trouvées).`
+      + (items.length < 15 ? " Peu de résultats : baisse le seuil de vues ou essaie un mot-clé plus large." : "");
     render(items);
     if (searchType === "videos" && items.length) { lastSearch = { q, items: items.slice(0, 30) }; showUseLast(); }
   } catch (err) {
