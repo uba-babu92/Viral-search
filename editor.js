@@ -92,6 +92,32 @@
   #edSheet { position: absolute; inset: 0; background: #0009; display: flex; align-items: flex-end; z-index: 10; }
   #edSheet .sheet { width: 100%; max-height: 75vh; overflow-y: auto; background: #1c1c1c; border-radius: 28px 28px 0 0; padding: 16px 16px max(16px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; }
   #edSheet input[type=range] { width: 100%; accent-color: #FF5A4E; }
+  #edSheet.clear { background: transparent; }
+  #edSheet.clear .sheet { max-height: 54vh; box-shadow: 0 -12px 30px #000c; }
+  #edSheet .sheet > button:not(.main), .elib button, .esfx button { background: #2a2a2a; color: #fff; border: 0; border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+  .shd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .shd b { font-size: 17px; }
+  .shd .ok { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 20px; border: 0; background: #FF5A4E; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; }
+  .slab { font-size: 11px; color: #8a8a93; text-transform: uppercase; letter-spacing: .1em; margin: 6px 0 0; font-weight: 600; flex: 0 0 auto; }
+  .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; flex: 0 0 auto; }
+  .chips::-webkit-scrollbar, .hrow::-webkit-scrollbar { display: none; }
+  .chip { flex: 0 0 auto; border: 0; border-radius: 999px; padding: 8px 15px; background: #2a2a2a; color: #ddd; font-size: 13px; font-weight: 600; }
+  .chip.on { background: #fff; color: #111; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; align-content: start; flex: 0 0 auto; }
+  .tile { width: 100%; min-width: 0; height: 74px; justify-content: center; border: 0; border-radius: 14px; background: #262626; color: #eee; padding: 8px 2px; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; }
+  .tile svg { width: 26px; height: 26px; }
+  .tile.on { background: #FF5A4E; color: #fff; }
+  .hrow { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; flex: 0 0 auto; }
+  .hrow .tile { flex: 0 0 74px; width: 74px; }
+  .hrow .tile b { font-size: 24px; line-height: 1.1; font-weight: normal; }
+  .sw { flex: 0 0 32px; width: 32px; height: 32px; border-radius: 16px; border: 2px solid #3a3a3a; padding: 0; }
+  .sw.on { border-color: #fff; box-shadow: 0 0 0 2px #FF5A4E; }
+  .wheel { position: relative; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 16px; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); overflow: hidden; }
+  .wheel input { position: absolute; inset: -4px; opacity: 0; width: 40px; height: 40px; border: 0; padding: 0; }
+  .srow { display: flex; justify-content: space-between; font-size: 13px; color: #ccc; }
+  .etr { position: absolute; width: 22px; height: 22px; border-radius: 6px; background: #fff; color: #111; z-index: 5; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #0f0f0f; }
+  .etr.on { background: #FF5A4E; color: #fff; }
+  .etr svg { width: 14px; height: 14px; }
   #ed button.main.alt { background: #2c2c2c; }
   #ed input[type=text] { background: #2a2a2a; color: #fff; }
   #edSheet input[type=text] { margin: 0; }
@@ -342,7 +368,7 @@
     }
     $("edRuler").innerHTML = ruler;
 
-    let html = "", x = h;
+    let html = "", x = h, trHtml = "";
     clips.forEach((c, i) => {
       const cw = Math.max(6, len(c) * PPS), on = sel && sel.type === "v" && sel.i === i;
       const bg = c.ref.thumb ? `background-image:url(${c.ref.thumb});` : "";
@@ -350,7 +376,9 @@
       html += `<div class="eclip${on ? " sel" : ""}" data-k="v" data-i="${i}" style="left:${x}px;top:${VIDEO_Y}px;width:${cw}px;height:${VIDEO_H}px;${bg}"><span>${fmt(len(c))}</span>${badge ? `<em>${badge}</em>` : ""}${kfMarks("v", c)}
         ${on ? `<div class="ehandle l" data-h="l">‹</div><div class="ehandle r" data-h="r">›</div>` : ""}</div>`;
       x += cw;
+      if (i < clips.length - 1) trHtml += `<div class="etr${c.tr && c.tr.type !== "none" ? " on" : ""}" data-tr="${i}" style="left:${x - 11}px;top:${VIDEO_Y + VIDEO_H / 2 - 11}px">${ICON_TR}</div>`;
     });
+    html += trHtml;
     if (overlays.length) overlays.forEach((o, i) => html += itemHtml("o", o, i, ovY + ovL[i] * ROW_H, "ov", "Superposition", o.ref.thumb ? `background-image:url(${o.ref.thumb});` : ""));
     else html += `<div class="eph" data-ph="ov" style="left:${h}px;top:${ovY}px;width:${w}px"></div>`;
     if (effects.length) effects.forEach((x, i) => html += itemHtml("f", x, i, fxY + fxL[i] * ROW_H, "fx", "✦ " + (x.type === "gen" ? x.name || "Claude" : FX[x.type] ? FX[x.type].label : x.type)));
@@ -429,7 +457,8 @@
       const v = valAt("t", x, t - x.start);
       e.box.textContent = x.text;
       e.box.style.left = v.x * 100 + "%"; e.box.style.top = v.y * 100 + "%";
-      e.box.style.fontSize = stage.clientHeight * TXT_RATIO * v.scale + "px";
+      e.box.style.font = fontOf(x, stage.clientHeight * TXT_RATIO * v.scale);
+      e.box.style.lineHeight = "1.15";
       e.box.style.transform = `translate(-50%, -50%) rotate(${v.rot}deg)`;
       e.box.classList.toggle("sel", !!(sel && sel.type === "t" && sel.i === i));
       e.box.style.display = t >= x.start && t < x.start + len(x) ? "" : "none";
@@ -885,10 +914,24 @@
     if (e.anchor === "face") clips.forEach(c => ensureFaces(c.ref));
     return e;
   }
+  const FX_ICONS = {
+    zoom: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5M11 8v6M8 11h6"/>',
+    shake: '<path d="M3 12l3-5 3 10 3-10 3 10 3-10 3 5"/>',
+    flash: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+    fire: '<path d="M12 22c4 0 7-3 7-7 0-5-5-7-5-12-3 2-4 5-4 8-1-1-2-2-2-4-2 2-3 5-3 8 0 4 3 7 7 7z"/>',
+    sparks: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/>',
+    confetti: '<path d="M4 20l5-14 9 9z"/><path d="M14 4v2M19 7h2M17 3l-1 2M20 11l1 1"/>',
+    coins: '<ellipse cx="12" cy="7" rx="7" ry="3"/><path d="M5 7v5c0 1.7 3.1 3 7 3s7-1.3 7-3V7M5 12v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"/>',
+    hearts: '<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>',
+    smoke: '<path d="M7 18h10a4 4 0 0 0 0-8 5 5 0 0 0-9.6-1A4 4 0 0 0 7 18z"/>',
+    circle: '<circle cx="12" cy="12" r="8"/>',
+    arrow: '<path d="M5 19L19 5M10 5h9v9"/>',
+  };
   function fxSheet() {
     pause();
-    sheet(`<b>Effets</b><div class="small" style="color:#999">Ajouté à la barre blanche. Feu, étincelles, cœurs, fumée, cercle et flèche suivent ton visage.</div>
-      <div class="esfx">${Object.entries(FX).map(([id, f]) => `<div><button data-fx="${id}" style="width:100%">${f.label}</button></div>`).join("")}</div>`);
+    sheet(`<div class="shd"><b>Effets</b></div>
+      <div class="small" style="color:#8a8a93;margin:0">Ajouté à la barre blanche. Feu, étincelles, cœurs, fumée, cercle et flèche suivent ton visage.</div>
+      <div class="tiles">${Object.entries(FX).map(([id, f]) => `<button class="tile" data-fx="${id}">${svgI(FX_ICONS[id] || "")}<span>${f.label}</span></button>`).join("")}</div>`, true, true);
     $("edSheetBody").querySelectorAll("[data-fx]").forEach(b => b.onclick = () => {
       save();
       addEffect(b.dataset.fx, t);
@@ -896,6 +939,7 @@
       closeSheet(); draw(); renderStill(t);
     });
   }
+
 
 
   // ---------- Blocs Claude : animations écrites sur mesure (code Canvas), déplaçables, modifiables par l'IA ----------
@@ -1032,6 +1076,98 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     }
   }
 
+
+  // ---------- Transitions entre deux plans (sur le début du plan suivant) ----------
+  const TR = [["none", "Aucune"], ["fade", "Fondu"], ["black", "Fondu noir"], ["slide", "Glisser"], ["zoom", "Zoom"], ["flash", "Flash"]];
+  const svgI = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  const ICON_TR = svgI('<path d="M4 5l7 7-7 7zM20 5l-7 7 7 7z" fill="currentColor"/>');
+  const TR_ICONS = {
+    none: svgI('<circle cx="12" cy="12" r="8"/><path d="M6 18L18 6"/>'),
+    fade: svgI('<rect x="3" y="6" width="10" height="12" rx="2"/><rect x="11" y="6" width="10" height="12" rx="2" fill="currentColor" opacity=".45"/>'),
+    black: svgI('<rect x="3" y="6" width="18" height="12" rx="2" fill="currentColor"/>'),
+    slide: svgI('<rect x="3" y="6" width="9" height="12" rx="2"/><path d="M15 12h6M18 9l3 3-3 3"/>'),
+    zoom: svgI('<rect x="7" y="8" width="10" height="8" rx="1"/><path d="M3 4h4M3 4v4M21 4h-4M21 4v4M3 20h4M3 20v-4M21 20h-4M21 20v-4"/>'),
+    flash: svgI('<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>'),
+  };
+  function trAt(i, off) {
+    const p = i > 0 && clips[i - 1].tr;
+    if (!p || p.type === "none") return null;
+    const d = Math.min(p.d || 0.4, len(clips[i]) * 0.9, len(clips[i - 1]));
+    return off < d ? { type: p.type, u: Math.max(0, off / d) } : null;
+  }
+  const tmpCv = {};
+  function tmpCanvas(W, H, k = "b") { const c = tmpCv[k + W] ||= document.createElement("canvas"); if (c.width !== W) { c.width = W; c.height = H; } return c; }
+  const snapP = { cv: null, owner: null }, snapE = { cv: null, owner: null };
+  function keepSnap(snap, g, W, H, owner) {
+    if (!snap.cv || snap.cv.width !== W) { snap.cv = document.createElement("canvas"); snap.cv.width = W; snap.cv.height = H; }
+    snap.cv.getContext("2d").drawImage(g.canvas, 0, 0, W, H); snap.owner = owner;
+  }
+  // Plan principal au temps donné, avec la transition si on est au début d'un plan
+  function mainLayer(g, W, H, src, i, off, time, snap) {
+    const c = clips[i], tr = trAt(i, off);
+    if (!tr) {
+      const mt = drawMain(g, W, H, src, c, off, time);
+      if (snap && c.tr && c.tr.type !== "none" && len(c) - off < 0.35) keepSnap(snap, g, W, H, c);   // dernière image du plan, pour la transition
+      return mt;
+    }
+    const A = snap && snap.owner === clips[i - 1] ? snap.cv : null;
+    const B = tmpCanvas(W, H), bg = B.getContext("2d");
+    bg.fillStyle = "#000"; bg.fillRect(0, 0, W, H);
+    const mt = drawMain(bg, W, H, src, c, off, time);
+    const u = tr.u, e = easeIO(u);
+    g.save();
+    if (tr.type === "fade") { if (A) g.drawImage(A, 0, 0, W, H); g.globalAlpha = e; g.drawImage(B, 0, 0); }
+    else if (tr.type === "black") {
+      if (u < 0.5) { if (A) g.drawImage(A, 0, 0, W, H); g.fillStyle = `rgba(0,0,0,${easeIO(u * 2)})`; }
+      else { g.drawImage(B, 0, 0); g.fillStyle = `rgba(0,0,0,${1 - easeIO((u - 0.5) * 2)})`; }
+      g.fillRect(0, 0, W, H);
+    } else if (tr.type === "slide") { if (A) g.drawImage(A, -e * W, 0, W, H); g.drawImage(B, (1 - e) * W, 0); }
+    else if (tr.type === "zoom") {
+      g.fillStyle = "#000"; g.fillRect(0, 0, W, H);
+      if (A) { g.save(); g.globalAlpha = 1 - e; const z = 1 + e * 0.6; g.translate(W / 2, H / 2); g.scale(z, z); g.drawImage(A, -W / 2, -H / 2, W, H); g.restore(); }
+      g.globalAlpha = e; const z2 = 1.4 - 0.4 * e; g.translate(W / 2, H / 2); g.scale(z2, z2); g.drawImage(B, -W / 2, -H / 2, W, H);
+    } else if (tr.type === "flash") {
+      if (u < 0.5 && A) g.drawImage(A, 0, 0, W, H); else g.drawImage(B, 0, 0);
+      g.fillStyle = `rgba(255,255,255,${1 - Math.abs(u - 0.5) * 2})`; g.fillRect(0, 0, W, H);
+    } else g.drawImage(B, 0, 0);
+    g.restore();
+    return mt;
+  }
+  // Dernière image du plan d'avant (pour une image fixe pendant une transition)
+  async function prevSnapStill(i) {
+    const A = clips[i - 1];
+    if (!A || snapP.owner === A && snapP.at === A.out) return;
+    const m = await media(A.ref).catch(() => null);
+    const w = m && m.prev ? await m.prev.getCanvas(A.out - 0.03 + (m.off || 0)).catch(() => null) : null;
+    if (!w) return;
+    const cv = tmpCanvas(PW, PH, "s"), g = cv.getContext("2d");
+    g.fillStyle = "#000"; g.fillRect(0, 0, PW, PH);
+    drawMain(g, PW, PH, w.canvas, A, len(A) - 0.03, startOf(i) - 0.03);
+    keepSnap(snapP, g, PW, PH, A); snapP.at = A.out;
+  }
+  function trSheet(i) {
+    pause();
+    const c = clips[i];
+    if (!c || !clips[i + 1]) return;
+    save();
+    let type = c.tr ? c.tr.type : "none", d = c.tr ? c.tr.d : 0.4;
+    const at = startOf(i + 1);
+    const apply = () => { c.tr = type === "none" ? undefined : { type, d }; draw(); seek(Math.max(0, at - 0.05)); setTimeout(() => { seek(at + d * 0.5); renderStill(t); }, 60); };
+    sheet(`<div class="shd"><b>Transition</b><button class="ok" id="trOk">${svgI('<path d="M5 12l5 5 9-10"/>')}</button></div>
+      <div class="tiles" style="grid-template-columns:repeat(3,1fr)">${TR.map(([id, l]) => `<button class="tile${type === id ? " on" : ""}" data-tt="${id}">${TR_ICONS[id]}<span>${l}</span></button>`).join("")}</div>
+      <div class="srow"><span>Durée</span><span id="trDV">${d.toFixed(1)} s</span></div>
+      <input type="range" id="trD" min="0.2" max="1" step="0.1" value="${d}">
+      <button class="main alt" id="trAll">Appliquer à tous les plans</button>`, false, true);
+    $("edSheetBody").querySelectorAll("[data-tt]").forEach(b => b.onclick = () => {
+      type = b.dataset.tt;
+      $("edSheetBody").querySelectorAll("[data-tt]").forEach(x => x.classList.toggle("on", x === b));
+      apply();
+    });
+    $("trD").oninput = () => { d = +$("trD").value; $("trDV").textContent = d.toFixed(1) + " s"; apply(); };
+    $("trAll").onclick = () => { clips.forEach((x, j) => { if (j < clips.length - 1) x.tr = type === "none" ? undefined : { type, d }; }); draw(); toast("Transition appliquée à tous les plans"); };
+    $("trOk").onclick = () => { closeSheet(); draw(); };
+  }
+
   // Dessin d'une image complète (plan + superpositions) sur un canvas
   const TXT_RATIO = 0.06;
   function drawMain(g, W, H, src, c, local, time) {   // plan principal avec zoom / cadrage / rotation + zoom punch / secousse
@@ -1062,9 +1198,25 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     } else g.drawImage(src, -bw / 2, -bh / 2, bw, bh);
     g.restore();
   }
+  // Polices du texte (chargées depuis Google Fonts)
+  const FONTS = {
+    inter: ["Classique", "800 {s}px Inter"], anton: ["Impact", "400 {s}px Anton"], bebas: ["Bebas", "400 {s}px 'Bebas Neue'"],
+    mont: ["Montserrat", "900 {s}px Montserrat"], playfair: ["Élégant", "italic 800 {s}px 'Playfair Display'"],
+    marker: ["Marqueur", "400 {s}px 'Permanent Marker'"], pacifico: ["Script", "400 {s}px Pacifico"], mono: ["Mono", "800 {s}px 'JetBrains Mono'"],
+  };
+  const fontOf = (x, size) => (FONTS[x.font] || FONTS.inter)[1].replace("{s}", size.toFixed(1)) + ", system-ui, sans-serif";
+  const fontsAsked = new Set();
+  function needFont(x) {   // une police pas encore chargée : on la charge puis on redessine
+    const f = fontOf(x, 40);
+    if (fontsAsked.has(f) || document.fonts.check(f)) return;
+    fontsAsked.add(f);
+    document.fonts.load(f).then(() => { if (!playing) renderStill(t); drawTextBoxes(); });
+  }
+  const luma = c => { const n = parseInt(String(c).slice(1), 16); return isNaN(n) ? 1 : (0.299 * (n >> 16 & 255) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)) / 255; };
   function drawTexts(g, W, H, time) {
     texts.forEach(x => {
-      if (time < x.start || time >= x.start + len(x)) return;
+      if (time < x.start || time >= x.start + len(x) || !String(x.text).trim()) return;
+      needFont(x);
       const age = time - x.start, v = valAt("t", x, age);
       let k = 1, ox = 0, oy = 0;
       if (x.anim === "pop") k = age < 0.25 ? 0.3 + 0.95 * easeOut(age / 0.18) - 0.25 * Math.max(0, (age - 0.18) / 0.07) : 1;
@@ -1074,13 +1226,21 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
       g.save();
       g.globalAlpha = Math.max(0, Math.min(1, v.op));
       g.translate(v.x * W + ox, v.y * H + oy); g.rotate(v.rot * Math.PI / 180);
-      g.font = `800 ${size}px Inter, system-ui, sans-serif`;
+      g.font = fontOf(x, size);
       g.textAlign = "center"; g.textBaseline = "middle"; g.lineJoin = "round";
-      const lines = String(x.text).split("\n"), lh = size * 1.1;
+      const lines = String(x.text).split("\n"), lh = size * 1.15, col = x.color || "#fff", st = x.style || "stroke";
       lines.forEach((l, j) => {
         const y = (j - (lines.length - 1) / 2) * lh;
-        g.lineWidth = size * 0.14; g.strokeStyle = "#000"; g.strokeText(l, 0, y);
-        g.fillStyle = x.color || "#fff"; g.fillText(l, 0, y);
+        if (st === "box") {
+          const w = g.measureText(l).width, p = size * 0.28;
+          g.fillStyle = col; roundRect(g, -w / 2 - p, y - size * 0.62, w + p * 2, size * 1.24, size * 0.22); g.fill();
+          g.fillStyle = luma(col) > 0.6 ? "#141414" : "#fff"; g.fillText(l, 0, y);
+          return;
+        }
+        if (st === "shadow") { g.shadowColor = "rgba(0,0,0,.65)"; g.shadowBlur = size * 0.3; g.shadowOffsetY = size * 0.06; }
+        if (st === "stroke") { g.lineWidth = size * 0.14; g.strokeStyle = luma(col) < 0.25 ? "#fff" : "#000"; g.strokeText(l, 0, y); }
+        g.fillStyle = col; g.fillText(l, 0, y);
+        g.shadowColor = "transparent";
       });
       g.restore();
     });
@@ -1095,7 +1255,7 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     if (img) lastMain = img;
     if (!lastMain) return;   // rien de décodé encore : on garde l'image affichée
     vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH);
-    const mt = drawMain(vg, PW, PH, lastMain, c, off, time);
+    const mt = mainLayer(vg, PW, PH, lastMain, i, off, time, snapP);
     // prépare le plan suivant à l'avance : zéro latence au passage
     if (clips[i + 1] && len(c) - off < 1.5) feedFor(clips[i + 1], 0);
     const visible = overlays.filter(o => time >= o.start && time < o.start + len(o) && !o.ref.image).length;
@@ -1138,10 +1298,11 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
       if (mo.image) ovs.push([mo.image, o]);
       else if (mo.prev) { const wo = await smallSink(mo).getCanvas(o.in + (time - o.start) * sp(o) + (mo.off || 0)).catch(() => null); if (wo) ovs.push([wo.canvas, o]); }
     }
+    if (trAt(i, off)) await prevSnapStill(i);
     if (my !== stillToken) return;
     vg.fillStyle = "#000"; vg.fillRect(0, 0, PW, PH);
     let mt = null;
-    if (w) { mt = drawMain(vg, PW, PH, w.canvas, c, off, time); lastMain = null; }
+    if (w) { mt = mainLayer(vg, PW, PH, w.canvas, i, off, time, snapP); lastMain = null; }
     ovs.forEach(([src, o]) => drawOverlayImg(vg, PW, PH, src, o, time - o.start));
     drawTexts(vg, PW, PH, time);
     drawFx(vg, PW, PH, time, "mid", mt);
@@ -1289,6 +1450,8 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
   tl.addEventListener("touchend", e => { if (pinch && e.touches.length < 2) { const at = pinch.at; pinch = null; draw(); setScroll(at); } }, { passive: true });
 
   items.addEventListener("pointerdown", e => {
+    const trb = e.target.closest(".etr");
+    if (trb) { press = { tr: +trb.dataset.tr, x: e.clientX, y: e.clientY }; return; }
     const el = e.target.closest("[data-k]");
     if (!el) { press = { empty: true, x: e.clientX, y: e.clientY }; return; }   // zone vide : toucher = tout désélectionner (comme CapCut)
     const kind = el.dataset.k, i = +el.dataset.i;
@@ -1312,7 +1475,8 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
   items.addEventListener("pointerup", () => {
     if (press && !press.moved && !dragging) {
       clearTimeout(press.timer);
-      if (press.empty) { if (sel) { sel = null; draw(); } }
+      if (press.tr !== undefined) trSheet(press.tr);
+      else if (press.empty) { if (sel) { sel = null; draw(); } }
       else {
         const same = sel && sel.type === press.kind && sel.i === press.i;
         sel = same ? null : { type: press.kind, i: press.i };
@@ -1339,6 +1503,7 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     draw();
     const el = items.querySelector(`[data-k="${p.kind}"][data-i="${p.i}"]`);
     el.classList.add("drag");
+    items.querySelectorAll(".etr").forEach(b => (b.style.display = "none"));
     const startX = p.x, startScroll = tl.scrollLeft, baseLeft = parseFloat(el.style.left);
     let target = p.i;
     const move = e => {
@@ -1465,7 +1630,7 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
       save();
       // les clés d'animation suivent chaque morceau
       const kA = (a.kf || []).filter(k => k.t <= off).map(k => ({ ...k })), kB = (a.kf || []).filter(k => k.t >= off).map(k => ({ ...k, t: +(k.t - off).toFixed(3) }));
-      list.splice(sel.i, 1, { ...a, out: a.in + off * sp(a), kf: kA }, { ...a, start: t, in: a.in + off * sp(a), kf: kB });
+      list.splice(sel.i, 1, { ...a, out: a.in + off * sp(a), kf: kA, tr: undefined }, { ...a, start: t, in: a.in + off * sp(a), kf: kB });
       sel = { type: sel.type, i: sel.i + 1 };
     } else if (name === "dup" && sel) {
       save();
@@ -1497,31 +1662,45 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
   // ----- Texte libre -----
   function textAddSheet(edit) {
     pause();
-    const cur = edit !== undefined ? texts[edit] : null;
-    sheet(`<b>${cur ? "Modifier le texte" : "Ajouter un texte"}</b>
-      <input type="text" id="edTxt" value="${cur ? esc(cur.text) : ""}" placeholder="Ton texte">
-      <div class="small" style="color:#999;margin:0">Animation</div>
-      <div class="esfx">${[["none", "Aucune"], ["pop", "Pop"], ["slide", "Glisse"], ["shake", "Tremble"]].map(([id, l]) => `<div><button data-an="${id}" class="${(cur ? cur.anim || "none" : "pop") === id ? "add" : ""}" style="width:100%">${l}</button></div>`).join("")}</div>
-      <div class="small" style="color:#999;margin:0">Couleur</div>
-      <div style="display:flex;gap:8px">${["#FFFFFF", "#FF5A4E", "#FFD23F", "#3EC1D3", "#4ADE80"].map(c => `<button data-co="${c}" style="width:34px;height:34px;border-radius:17px;border:3px solid ${(cur ? cur.color || "#FFFFFF" : "#FFFFFF") === c ? "#fff" : "#333"};background:${c}"></button>`).join("")}</div>
-      <button class="main" id="edTxtOk">OK</button>`);
-    setTimeout(() => $("edTxt").focus(), 50);
-    let anim = cur ? cur.anim || "none" : "pop", color = cur ? cur.color || "#FFFFFF" : "#FFFFFF";
-    $("edSheetBody").querySelectorAll("[data-an]").forEach(b => b.onclick = () => { anim = b.dataset.an; $("edSheetBody").querySelectorAll("[data-an]").forEach(x => x.classList.toggle("add", x === b)); });
-    $("edSheetBody").querySelectorAll("[data-co]").forEach(b => b.onclick = () => { color = b.dataset.co; $("edSheetBody").querySelectorAll("[data-co]").forEach(x => (x.style.borderColor = x === b ? "#fff" : "#333")); });
-    $("edTxtOk").onclick = () => {
-      const v = $("edTxt").value.trim();
-      if (!v) return closeSheet();
-      save();
-      if (cur) { cur.text = v; cur.anim = anim; cur.color = color; }
-      else {
-        const start = Math.min(t, Math.max(0, total() - 0.5));
-        texts.push({ text: v, start, in: 0, out: Math.max(0.5, Math.min(3, total() - start)), x: 0.5, y: 0.35, scale: 1, rot: 0, op: 1, kf: [], anim, color });
-        sel = { type: "t", i: texts.length - 1 };
-      }
-      closeSheet(); draw(); renderStill(t);
-      if (!cur) toast("Glisse le texte sur l'image, pince pour l'agrandir ou le tourner. ◇ pour l'animer.", 3500);
+    save();
+    let cur = edit !== undefined ? texts[edit] : null;
+    const isNew = !cur;
+    if (isNew) {   // le texte apparaît tout de suite sur la vidéo, et change en direct
+      const start = Math.min(t, Math.max(0, total() - 0.5));
+      cur = { text: "", start, in: 0, out: Math.max(0.5, Math.min(3, total() - start)), x: 0.5, y: 0.35, scale: 1, rot: 0, op: 1, kf: [], anim: "pop", color: "#FFFFFF", font: "inter", style: "stroke" };
+      texts.push(cur);
+      sel = { type: "t", i: texts.length - 1 };
+    }
+    const SW = ["#FFFFFF", "#141414", "#FF5A4E", "#FF3D8B", "#FFD3E5", "#FFD23F", "#3EC1D3", "#7B61FF", "#4ADE80"];
+    const chips = (key, list, val) => `<div class="chips">${list.map(([id, l]) => `<button class="chip${val === id ? " on" : ""}" data-${key}="${id}">${l}</button>`).join("")}</div>`;
+    sheet(`<div class="shd"><b>${isNew ? "Ajouter un texte" : "Modifier le texte"}</b><button class="ok" id="edTxtOk">${svgI('<path d="M5 12l5 5 9-10"/>')}</button></div>
+      <input type="text" id="edTxt" value="${esc(cur.text)}" placeholder="Ton texte">
+      <div class="slab">Police</div>
+      <div class="hrow">${Object.entries(FONTS).map(([id, [l, f]]) => `<button class="tile${(cur.font || "inter") === id ? " on" : ""}" data-fo="${id}"><b style="font:${f.replace("{s}", "24")}">Aa</b><span>${l}</span></button>`).join("")}</div>
+      <div class="slab">Style</div>
+      ${chips("st", [["stroke", "Contour"], ["shadow", "Ombre"], ["box", "Boîte"], ["none", "Simple"]], cur.style || "stroke")}
+      <div class="slab">Animation</div>
+      ${chips("an", [["none", "Aucune"], ["pop", "Pop"], ["slide", "Glisse"], ["shake", "Tremble"]], cur.anim || "none")}
+      <div class="slab">Couleur</div>
+      <div class="hrow" style="align-items:center;gap:10px">${SW.map(c => `<button class="sw${(cur.color || "#FFFFFF").toUpperCase() === c ? " on" : ""}" data-co="${c}" style="background:${c}"></button>`).join("")}
+        <label class="wheel" title="Toutes les couleurs"><input type="color" id="edTxtCol" value="${cur.color || "#FFFFFF"}"></label></div>`, false, true);
+    const body = $("edSheetBody");
+    const live = () => { draw(); renderStill(t); };
+    const pick = (attr, key) => body.querySelectorAll(`[data-${attr}]`).forEach(b => b.onclick = () => {
+      cur[key] = b.dataset[attr];
+      body.querySelectorAll(`[data-${attr}]`).forEach(x => x.classList.toggle("on", x === b));
+      if (key === "color") $("edTxtCol").value = cur.color;
+      live();
+    });
+    pick("fo", "font"); pick("st", "style"); pick("an", "anim"); pick("co", "color");
+    $("edTxtCol").oninput = () => { cur.color = $("edTxtCol").value.toUpperCase(); body.querySelectorAll("[data-co]").forEach(x => x.classList.remove("on")); live(); };
+    $("edTxt").oninput = () => { cur.text = $("edTxt").value; live(); };
+    if (isNew) setTimeout(() => $("edTxt").focus(), 50);
+    onSheetClose = () => {   // texte vide : on le retire
+      if (!String(cur.text).trim()) { const k = texts.indexOf(cur); if (k >= 0) texts.splice(k, 1); sel = null; }
+      draw(); renderStill(t);
     };
+    $("edTxtOk").onclick = () => { closeSheet(); if (isNew && cur.text.trim()) toast("Glisse le texte sur l'image, pince pour l'agrandir ou le tourner. ◇ pour l'animer.", 3500); };
   }
   // ----- Ajuster : zoom / taille, rotation, transparence (crée une clé si l'élément est animé) -----
   function adjustSheet() {
@@ -1842,12 +2021,14 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
   }
 
   // ---------- Feuille (bas d'écran) ----------
-  function sheet(html, closable = true) {
+  let onSheetClose = null;
+  function sheet(html, closable = true, clear = false) {
+    $("edSheet").classList.toggle("clear", clear);
     $("edSheetBody").innerHTML = html;
     $("edSheetClose").classList.toggle("hidden", !closable);
     $("edSheet").classList.remove("hidden");
   }
-  function closeSheet() { $("edSheet").classList.add("hidden"); }
+  function closeSheet() { $("edSheet").classList.add("hidden"); const f = onSheetClose; onSheetClose = null; if (f) f(); }
   $("edSheetClose").onclick = () => { closeSheet(); draw(); };
 
   // ---------- Assistant IA dans l'éditeur : tu demandes, il modifie le montage ----------
@@ -2038,8 +2219,10 @@ Si la demande est impossible, renvoie "actions":[] et explique dans "reponse".`;
 ÉTAPE 1 — le montage, en JSON entre <plan> et </plan> :
 {"keep":["S1","S3"],"speed":{"S2":2},"volume":{"S1":1.2},"captions":{"on":true,"style":"box|karaoke|pop|classic","position":"haut|milieu|bas","size":1},
 "effects":[{"type":"zoom|shake|flash","at":"S3","word":"mot","duration":0.7}],
+"transitions":{"S3":"fade|black|slide|zoom|flash"},
 "sfx":[{"name":"nom exact","at":"S3","where":"start|end"}],"summary":"1 ou 2 phrases en français sur ce que tu as fait"}
 - keep : garde l'ordre ; si une phrase a été dite plusieurs fois (prises ratées), garde la meilleure (souvent la dernière). Respecte une durée maximale si elle est demandée.
+- transitions : transition à la FIN du morceau indiqué (vers le suivant). Seulement entre deux scènes vraiment différentes, rarement (0 à 3 par vidéo) : une vidéo face caméra se monte surtout en coupes sèches.
 - effects : "zoom" (zoom punch sur la vidéo) sur un mot fort toutes les 2 à 4 s, "shake" sur un moment choc, "flash" sur un changement d'idée. "speed"/"volume" seulement si demandé (vitesse 0.5 à 100).
 - Bruitages disponibles : ${lib.length ? lib.map(s => s.name).join(", ") : "aucun"} (n'en invente pas).
 ÉTAPE 2 — les animations : environ une toutes les 4 à 6 secondes de vidéo finale (au moins 3), chacune différente, qui illustre l'idée dite à ce moment-là (titre d'accroche au début, chiffres, mots clés, listes, appel à l'action à la fin…). Respecte le style demandé par l'utilisateur.
@@ -2099,6 +2282,9 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
       const clip = { ...s.c, in: +s.in.toFixed(3), out: +s.out.toFixed(3), speed, vol };
       startAt[s.id] = at;
       s.words.forEach(w => mapped.push({ word: w.w, start: at + (w.s - s.in) / speed, end: at + (w.e - s.in) / speed }));
+      delete clip.tr;
+      const tr = (plan.transitions || {})[s.id];
+      if (TR.some(x => x[0] === tr && tr !== "none")) clip.tr = { type: tr, d: 0.4 };
       newClips.push(clip);
       at += len(clip);
     });
@@ -2306,6 +2492,7 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
       const cv = document.createElement("canvas"); cv.width = EW; cv.height = EH;
       const g = cv.getContext("2d");
       await document.fonts.ready;
+      await Promise.all(texts.map(x => document.fonts.load(fontOf(x, 60)).catch(() => {})));   // polices des textes prêtes pour l'export
       const vs = new MB.CanvasSource(cv, { codec: "avc", bitrate: 14e6, keyFrameInterval: 2 });   // ~ qualité appareil photo iPhone
       out.addVideoTrack(vs, { frameRate: FPS });
       say("Mixage du son…");
@@ -2331,7 +2518,7 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
         if (it) { const r = await it.next(); if (!r.done && r.value) frame = r.value.canvas; }
         g.fillStyle = "#000"; g.fillRect(0, 0, EW, EH);
         let mtx = null;
-        if (frame && ci >= 0) mtx = drawMain(g, EW, EH, frame, clips[ci], tt - clipRange[ci][2], tt);
+        if (frame && ci >= 0) mtx = mainLayer(g, EW, EH, frame, ci, tt - clipRange[ci][2], tt, snapE);
         // superpositions
         for (let j = 0; j < overlays.length; j++) {
           const o = overlays[j], [a, b] = ovRange[j];

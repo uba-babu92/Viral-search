@@ -56,3 +56,8 @@
 - Mémoire par niche 14 jours (pas de nouvelle recherche payante), ou réutilise la dernière recherche.
 - « Adapter » inchangé (part de la vidéo déjà analysée).
 - À faire : brouillons de montage, DA rose + typo Anton (typo validée, couleurs à revoir).
+
+## Transitions + nouveaux menus (fait)
+- Bouton entre deux plans : Aucune, Fondu, Fondu noir, Glisser, Zoom, Flash ; durée 0,2 à 1 s ; « Appliquer à tous ». Dans l'aperçu et l'export. L'IA peut en mettre (rarement).
+- Menu Texte : aperçu en direct, 8 polices, style (Contour, Ombre, Boîte, Simple), animations en pastilles, couleurs + roue chromatique.
+- Menu Effets en grille d'icônes ; style sombre commun à tous les menus.
