@@ -45,7 +45,7 @@
   #ed .etop { display: flex; align-items: center; gap: 10px; padding: max(10px, env(safe-area-inset-top)) 14px 8px; }
   #ed .etop .grow { flex: 1; }
   #edClose { border: 0; background: none; color: #fff; padding: 4px; display: flex; }
-  #ed .epill { padding: 7px 12px; border-radius: 8px; background: #1f1f1f; font-size: 14px; font-weight: 600; }
+  #ed .epill { padding: 7px 12px; border-radius: 8px; background: #1f1f1f; font-size: 14px; font-weight: 600; border: 0; color: #fff; }
   #edExport { padding: 9px 18px; border: 0; border-radius: 999px; background: #FF5A4E; color: #fff; font-weight: 700; font-size: 15px; }
   #ed .eprev { flex: 1; min-height: 0; position: relative; display: flex; justify-content: center; align-items: center; }
   #ed .stage { position: relative; height: 100%; aspect-ratio: 9 / 16; max-width: 100%; background: #000; overflow: hidden; }
@@ -166,7 +166,7 @@
   // ---------- Interface ----------
   document.body.insertAdjacentHTML("beforeend", `
   <div id="ed" class="hidden">
-    <div class="etop"><button id="edClose">${ic("x", 26)}</button><span class="grow" id="edProxy" style="font-size:12px;color:#888"></span><span class="epill">1080p</span><button id="edExport">Exporter</button></div>
+    <div class="etop"><button id="edClose">${ic("x", 26)}</button><span class="grow" id="edProxy" style="font-size:12px;color:#888"></span><button class="epill" id="edQual">1080p</button><button id="edExport">Exporter</button></div>
     <div class="eprev"><div class="stage" id="edStage">
       <canvas id="edCanvas"></canvas>
       <div id="edOvs"></div><div id="edTxs"></div><div id="edCap" class="hidden"></div>
@@ -591,7 +591,11 @@
   // ---------- Moteur vidéo (Mediabunny) : aperçu image par image, sans freeze ----------
   // Comme CapCut Web / Clipchamp : on décode nous-mêmes les images (WebCodecs) et on les dessine.
   // Aperçu en petite qualité (fluide), export en pleine qualité sur le téléphone.
-  const FPS = 30, PW = 432, PH = 768, EW = 1080, EH = 1920;
+  const FPS = 30, PW = 432, PH = 768;
+  // Qualité d'export (bouton en haut) : 1080p, 720p ou 540p
+  const QUAL = { 1080: [1080, 1920, 14e6], 720: [720, 1280, 8e6], 540: [540, 960, 4.5e6] };
+  let qual = +(localStorage.getItem("exportQ") || 1080); if (!QUAL[qual]) qual = 1080;
+  let [EW, EH] = QUAL[qual];
   let MB = null;
   const loadMB = () => (MB ? Promise.resolve(MB) : import("./vendor/mediabunny.min.mjs").then(m => (MB = m)));
   let AC = null;
@@ -2779,6 +2783,17 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
     })());
   }
 
+  function showQual() { $("edQual").textContent = qual + "p"; }
+  showQual();
+  $("edQual").onclick = () => {
+    pause();
+    const opts = [[1080, "1080p", "La meilleure qualité, fichier plus lourd"], [720, "720p", "Bonne qualité, export plus rapide"], [540, "540p", "Le plus rapide, fichier léger"]];
+    sheet(`<div class="shd"><b>Qualité d'export</b></div>
+      ${opts.map(([q, l, d]) => `<button class="tile${q === qual ? " on" : ""}" data-q="${q}" style="height:auto;flex-direction:row;justify-content:space-between;padding:14px 16px;font-size:15px"><b>${l}</b><span style="font-size:12px;opacity:.8">${d}</span></button>`).join("")}`, true, true);
+    $("edSheetBody").querySelectorAll("[data-q]").forEach(b => b.onclick = () => {
+      qual = +b.dataset.q; [EW, EH] = QUAL[qual]; localStorage.setItem("exportQ", qual); showQual(); closeSheet();
+    });
+  };
   let exporting = false;
   $("edExport").onclick = async () => {
     if (!clips.length || exporting) return;
@@ -2796,7 +2811,7 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
       const g = cv.getContext("2d");
       await document.fonts.ready;
       await Promise.all(texts.map(x => document.fonts.load(fontOf(x, 60)).catch(() => {})));   // polices des textes prêtes pour l'export
-      const vs = new MB.CanvasSource(cv, { codec: "avc", bitrate: 14e6, keyFrameInterval: 2 });   // ~ qualité appareil photo iPhone
+      const vs = new MB.CanvasSource(cv, { codec: "avc", bitrate: QUAL[qual][2], keyFrameInterval: 2 });   // ~ qualité appareil photo iPhone
       out.addVideoTrack(vs, { frameRate: FPS });
       say("Mixage du son…");
       const mix = await renderMix();
