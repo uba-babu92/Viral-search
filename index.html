@@ -280,6 +280,10 @@ const FETCH_VIDEOS = 150;  // vidéos demandées à Apify (on jette celles sous 
 const FETCH_PHOTOS = 100;
 const VIDEO_ACTOR = "mu0i~tiktok-search-scraper";
 const PHOTO_ACTOR = "scrapingmonkey~tiktok-scraper";
+// Nom de l'appli : change-le ici, il s'affiche partout (jamais le nom des services utilisés)
+const APP = "Viral";
+document.querySelector(".brandname").lastChild.textContent = APP;
+document.title = APP;
 const RELAY = "https://viral-relais.v5nhskv7zy.workers.dev";
 localStorage.removeItem("apifyToken"); // ancienne clé, plus utilisée
 
@@ -367,7 +371,7 @@ function setMontMode(m) {
   document.getElementById("mModeMan").classList.toggle("on", !ia);
   ["montagePrompt", "montageGo", "montageAdd"].forEach(id => document.getElementById(id).classList.toggle("hidden", !ia));
   document.getElementById("montageEdit").classList.toggle("hidden", ia);
-  document.getElementById("montageStatus").textContent = ia ? "Écris ton prompt, ajoute tes rushs, puis lance : l'IA monte tout." : "Ajoute tes rushs : la table de montage s'ouvre directement.";
+  document.getElementById("montageStatus").textContent = ia ? `Écris ton prompt, ajoute tes rushs, puis lance : ${APP} monte tout.` : "Ajoute tes rushs : la table de montage s'ouvre directement.";
 }
 document.getElementById("mModeIA").onclick = () => setMontMode("ia");
 document.getElementById("mModeMan").onclick = () => setMontMode("man");
@@ -549,7 +553,7 @@ async function askClaude(system, user, onText) {
   if (!res.ok) {
     const t = await res.text();
     checkCredit("Claude", res.status, t);
-    throw new Error(res.status === 401 ? "clé Claude refusée (vérifie CLAUDE_KEY dans Cloudflare)" : res.status === 404 ? "relais pas à jour (recopie worker.js dans Cloudflare)" : res.status + " " + t.slice(0, 150));
+    throw new Error(res.status === 401 ? `${APP} n'est pas disponible (clé CLAUDE_KEY refusée dans Cloudflare)` : res.status === 404 ? `${APP} n'est pas à jour (recopie worker.js dans Cloudflare)` : res.status + " " + t.slice(0, 150));
   }
   const rd = res.body.getReader(), dec = new TextDecoder();
   let buf = "", out = "", stop = "";
@@ -565,10 +569,10 @@ async function askClaude(system, user, onText) {
       let d; try { d = JSON.parse(line.slice(5)); } catch (e) { continue; }
       if (d.type === "content_block_delta" && d.delta.type === "text_delta") { out += d.delta.text; onText && onText(out); }
       else if (d.type === "message_delta" && d.delta.stop_reason) stop = d.delta.stop_reason;
-      else if (d.type === "error") { checkCredit("Claude", 0, JSON.stringify(d.error)); throw new Error((d.error && d.error.message) || "erreur Claude"); }
+      else if (d.type === "error") { checkCredit("Claude", 0, JSON.stringify(d.error)); throw new Error((d.error && d.error.message) || `${APP} a rencontré une erreur`); }
     }
   }
-  if (stop === "refusal") throw new Error("Claude a refusé la demande");
+  if (stop === "refusal") throw new Error(`${APP} n'a pas pu traiter cette demande`);
   return out;
 }
 const RULES = `Règles d'un bon script de vidéo courte (TikTok, Reels) :
@@ -716,12 +720,12 @@ async function askAI(content, shown) {
   chat.push({ role: "user", content });
   if (shown) addMsg(shown, true);
   document.querySelectorAll("#creerGo, #adapterGo, #replyGo").forEach(b => b.disabled = true);
-  st.textContent = "Le coach écrit…";
+  st.textContent = `${APP} réfléchit…`;
   try {
     let answer;
     if (scriptMode === "creer") {   // Claude, expert de la viralité (l'IA gratuite prend le relais s'il ne répond pas)
       try { answer = await askClaude(VIRAL_EXPERT, chat); }
-      catch (e) { st.textContent = "Claude indisponible, l'IA gratuite prend le relais…"; answer = await askModel([{ role: "system", content: VIRAL_EXPERT }, ...chat]); }
+      catch (e) { st.textContent = `${APP} réfléchit encore…`; answer = await askModel([{ role: "system", content: VIRAL_EXPERT }, ...chat]); }
     } else answer = await askModel(chat);
     chat.push({ role: "assistant", content: answer });
     addMsg(answer, false);
@@ -866,9 +870,9 @@ document.getElementById("viewerGo").onclick = async () => {
       if (!r.ok) throw new Error(await r.text());
       const d = decodeURIComponent(r.headers.get("X-Desc") || "");
       if (d && !v.text) v.text = d;
-      st.textContent = "Groq écoute la vidéo…";
+      st.textContent = `${APP} écoute la vidéo…`;
       transcript = await transcribeBlob(await r.blob());
-      source = "vidéo écoutée par Groq";
+      source = `vidéo écoutée par ${APP}`;
     } catch (e) { why = e.message; }
   }
   closeViewer();

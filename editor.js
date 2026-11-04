@@ -401,7 +401,7 @@
     html += trHtml;
     if (overlays.length) overlays.forEach((o, i) => html += itemHtml("o", o, i, ovY + ovL[i] * ROW_H, "ov", "Superposition", o.ref.thumb ? `background-image:url(${o.ref.thumb});` : ""));
     else html += `<div class="eph" data-ph="ov" style="left:${h}px;top:${ovY}px;width:${w}px"></div>`;
-    if (effects.length) effects.forEach((x, i) => html += itemHtml("f", x, i, fxY + fxL[i] * ROW_H, "fx", "✦ " + (x.type === "gen" ? x.name || "Claude" : FX[x.type] ? FX[x.type].label : x.type)));
+    if (effects.length) effects.forEach((x, i) => html += itemHtml("f", x, i, fxY + fxL[i] * ROW_H, "fx", "✦ " + (x.type === "gen" ? x.name || "Animation" : FX[x.type] ? FX[x.type].label : x.type)));
     else html += `<div class="eph" data-ph="fx" style="left:${h}px;top:${fxY}px;width:${w}px"></div>`;
     if (texts.length) texts.forEach((x, i) => html += itemHtml("t", x, i, txY + txL[i] * ROW_H, "txt", "T  " + esc(x.text)));
     else html += `<div class="eph" data-ph="txt" style="left:${h}px;top:${txY}px;width:${w}px"></div>`;
@@ -1054,14 +1054,14 @@ code JavaScript
     pause();
     const i = sel.i, e = effects[i];
     sheet(`<b>${esc(e.name)}</b>
-      <div class="small" style="color:#999">Animation créée par Claude. Sur l'aperçu : un doigt pour la déplacer, deux doigts pour l'agrandir ou la tourner. Pour changer ce qu'elle montre, demande ici.</div>
+      <div class="small" style="color:#999">Animation créée par ${APP}. Sur l'aperçu : un doigt pour la déplacer, deux doigts pour l'agrandir ou la tourner. Pour changer ce qu'elle montre, demande ici.</div>
       ${last}
       <textarea id="gnTxt" placeholder="Ex : plus gros, en jaune, plus rapide, ajoute un soulignement" style="min-height:70px;background:#2a2a2a;color:#fff"></textarea>
-      <button class="main" id="gnGo">Modifier avec Claude</button>`);
+      <button class="main" id="gnGo">Modifier</button>`);
     $("gnGo").onclick = async () => {
       const q = $("gnTxt").value.trim();
       if (!q) return;
-      sheet(`<div style="font-size:15px;color:#ddd"><span class="espin"></span> Claude modifie l'animation…</div><div class="small" style="color:#999">« ${esc(q)} »</div>`, false);
+      sheet(`<div style="font-size:15px;color:#ddd"><span class="espin"></span> ${APP} modifie l'animation…</div><div class="small" style="color:#999">« ${esc(q)} »</div>`, false);
       try {
         const d = e.full || len(e);
         const ans = await askClaude(GEN_RULES.replace("ATTRIBUTS ", ""), `Voici un bloc existant (durée ${d.toFixed(2)} s) :
@@ -1081,13 +1081,13 @@ Renvoie UN seul bloc complet, modifié selon la demande (garde le reste tel quel
         draw(); renderStill(t);
         genSheet(`<div style="background:#2a2a2a;border-radius:14px;padding:10px 12px;font-size:14px">C'est fait.<div class="small" style="color:#999;margin:4px 0 0">↶ pour annuler</div></div>`);
       } catch (err) {
-        genSheet(`<div style="color:#FF5A4E;font-size:13px">Claude n'a pas pu répondre : ${esc(String(err.message).slice(0, 140))}</div>`);
+        genSheet(`<div style="color:#FF5A4E;font-size:13px">${APP} n'a pas pu répondre : ${esc(String(err.message).slice(0, 140))}</div>`);
       }
     };
   }
   // Créer une ou plusieurs animations avec Claude, depuis l'assistant
   async function runGen(q) {
-    sheet(`<div style="font-size:15px;color:#ddd"><span class="espin"></span> Claude crée ton animation…</div><div class="small" style="color:#999">« ${esc(q)} »</div>`, false);
+    sheet(`<div style="font-size:15px;color:#ddd"><span class="espin"></span> ${APP} crée ton animation…</div><div class="small" style="color:#999">« ${esc(q)} »</div>`, false);
     try {
       const said = caps.map(c => `[${c.start.toFixed(1)}-${(c.start + len(c)).toFixed(1)}] ${c.text}`).join("\n") || "(pas de légendes : rien de transcrit)";
       const ans = await askClaude(GEN_RULES.replace("ATTRIBUTS", `debut="12.4"`) + `\nL'attribut debut est le moment (en secondes dans la vidéo) où le bloc commence.`,
@@ -1105,7 +1105,7 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
       draw(); renderStill(t);
       assistSheet(`<div style="background:#2a2a2a;border-radius:14px;padding:10px 12px;font-size:14px">${bl.length} animation(s) ajoutée(s) : ${esc(bl.map(b => b.name).join(", "))}.<div class="small" style="color:#999;margin:4px 0 0">Ligne violette dans la ligne du temps · ↶ pour annuler</div></div>`);
     } catch (err) {
-      assistSheet(`<div style="color:#FF5A4E;font-size:13px">Claude n'a pas pu répondre : ${esc(String(err.message).slice(0, 140))}</div>`);
+      assistSheet(`<div style="color:#FF5A4E;font-size:13px">${APP} n'a pas pu répondre : ${esc(String(err.message).slice(0, 140))}</div>`);
     }
   }
 
@@ -2164,7 +2164,7 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
       if (res.ok || !((res.status === 404 || res.status === 400) && /model/i.test(txt))) break;
     }
     if (!res.ok) { if (typeof checkCredit === "function") checkCredit("IA", res.status, txt); let why = txt; try { why = JSON.parse(txt).error.message || txt; } catch (e) {}
-      throw new Error(`Groq a refusé (${res.status}) : ${String(why).slice(0, 160)}` + (res.status === 401 ? " → la clé dans AI_KEY n'est pas acceptée" : "")); }
+      throw new Error(`${APP} n'a pas pu écouter (${res.status}) : ${String(why).slice(0, 160)}` + (res.status === 401 ? " → la clé dans AI_KEY n'est pas acceptée" : "")); }
     return JSON.parse(txt);
   }
   // Transcrit n'importe quelle vidéo (ex. une vidéo TikTok) : utilisé par la page Recherche
@@ -2334,12 +2334,12 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
       ${last}
       <textarea id="asTxt" placeholder="Ta demande" style="min-height:70px;background:#2a2a2a;color:#fff"></textarea>
       <button class="main" id="asGo">Modifier le montage</button>
-      <button class="main alt" id="asGen">Créer une animation avec Claude</button>`);
+      <button class="main alt" id="asGen">Créer une animation</button>`);
     $("asGo").onclick = () => { const q = $("asTxt").value.trim(); if (q) runAssist(q); };
     $("asGen").onclick = () => { const q = $("asTxt").value.trim(); if (q) runGen(q); };
   }
   async function runAssist(q) {
-    sheet(`<div style="font-size:15px;color:#ddd"><span class="espin"></span> L'IA modifie ton montage…</div><div class="small" style="color:#999">« ${esc(q)} »</div>`, false);
+    sheet(`<div style="font-size:15px;color:#ddd"><span class="espin"></span> ${APP} modifie ton montage…</div><div class="small" style="color:#999">« ${esc(q)} »</div>`, false);
     // État du montage, avec des repères simples (P = plans, L = légendes, T = textes, S = superpositions, A = sons)
     const ids = new Map(), r2 = x => +x.toFixed(2);
     const said = (a, b) => caps.filter(c => c.start < b && c.start + len(c) > a).map(c => c.text).join(" ");
@@ -2376,7 +2376,7 @@ Si la demande est impossible, renvoie "actions":[] et explique dans "reponse".`;
       const ans = await askModel([{ role: "system", content: sys }, { role: "user", content: `État : ${JSON.stringify(state)}\n\nDemande : ${q}` }]);
       plan = JSON.parse(ans.slice(ans.indexOf("{"), ans.lastIndexOf("}") + 1));
     } catch (e) {
-      return assistSheet(`<div style="color:#FF5A4E;font-size:13px">L'IA n'a pas pu répondre : ${esc(String(e.message).slice(0, 120))}</div>`);
+      return assistSheet(`<div style="color:#FF5A4E;font-size:13px">${APP} n'a pas pu répondre : ${esc(String(e.message).slice(0, 120))}</div>`);
     }
     save();
     let done = 0;
@@ -2456,7 +2456,7 @@ Si la demande est impossible, renvoie "actions":[] et explique dans "reponse".`;
     const steps = [
       { label: "Préparation de tes rushs", st: "doing" },
       { label: "Écoute de ce que tu dis", st: "wait" },
-      { label: "L'IA décide du montage", st: "wait" },
+      { label: `${APP} décide du montage`, st: "wait" },
       { label: "Application du montage et des légendes", st: "wait" },
     ];
     const show = () => aiSheet(steps, prompt ? `<div class="small" style="color:#999">Prompt : « ${esc(prompt.slice(0, 140))} »</div>` : "");
@@ -2508,7 +2508,7 @@ Si la demande est impossible, renvoie "actions":[] et explique dans "reponse".`;
     const ask = prompt || (typeof VIRAL_PROMPT !== "undefined" ? VIRAL_PROMPT : "montage TikTok très dynamique");
     // Claude : montage + animations sur mesure
     try {
-      steps[2].label = "Claude crée ton montage et tes animations"; show();
+      steps[2].label = `${APP} crée ton montage et tes animations`; show();
       let lastShow = 0;
       const sysC = `Tu es à la fois un monteur TikTok de haut niveau et un motion designer de génie. On te donne les morceaux d'une vidéo (dans l'ordre où ils ont été filmés) et la demande de l'utilisateur.
 ÉTAPE 1 — le montage, en JSON entre <plan> et </plan> :
@@ -2539,8 +2539,8 @@ ${GEN_RULES.replace("ATTRIBUTS", `at="S3" word="mot"`)}`;
       steps[2].st = "done"; steps[2].info = plan.summary || `${plan.keep.length} morceaux gardés sur ${segs.length}`;
     } catch (e) {
       plan = null; blocs = [];
-      note = "Claude indisponible (" + String(e.message).slice(0, 80) + ")";
-      steps[2].label = "L'IA décide du montage"; steps[2].info = note + " : je passe à l'IA gratuite…"; show();
+      note = "";
+      steps[2].label = `${APP} décide du montage`; steps[2].info = "Encore un instant…"; show();
     }
     if (!plan) try {
       const sys = `Tu es un monteur vidéo TikTok de haut niveau, spécialiste des montages très dynamiques (style gros créateurs). On te donne les morceaux d'une vidéo (dans l'ordre où ils ont été filmés) et la demande de l'utilisateur.
@@ -2561,7 +2561,7 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
       steps[2].st = "done"; steps[2].info = (note ? note + ". " : "") + (plan.summary || `${plan.keep.length} morceaux gardés sur ${segs.length}`);
     } catch (e) {
       plan = { keep: segs.map(s => s.id), captions: { on: true, style: "box" } };
-      steps[2].st = "fail"; steps[2].info = "IA indisponible (" + String(e.message).slice(0, 80) + ") : montage simple, blancs coupés";
+      steps[2].st = "fail"; steps[2].info = `${APP} n'a pas pu décider : montage simple, blancs coupés`;
     }
 
     // 3. Application
@@ -2635,7 +2635,7 @@ Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
     }
     const gain = before - total();
     steps[3].st = "done";
-    steps[3].info = [`${kept.length} morceaux`, genDone ? `${genDone} animation(s) Claude` : "", fxDone ? `${fxDone} effet(s)` : "", txDone ? `${txDone} gros texte(s)` : "", caps.length ? `${caps.length} légendes (${CAP_STYLES.find(s => s[0] === capStyle.style)[1]})` : "sans légendes", sfxDone ? `${sfxDone} bruitage(s)` : ""].filter(Boolean).join(" · ");
+    steps[3].info = [`${kept.length} morceaux`, genDone ? `${genDone} animation(s)` : "", fxDone ? `${fxDone} effet(s)` : "", txDone ? `${txDone} gros texte(s)` : "", caps.length ? `${caps.length} légendes (${CAP_STYLES.find(s => s[0] === capStyle.style)[1]})` : "sans légendes", sfxDone ? `${sfxDone} bruitage(s)` : ""].filter(Boolean).join(" · ");
     sel = null; draw(); seek(0);
     aiSheet(steps, `<div style="margin-top:6px;font-size:15px">Ton montage est prêt : <b>${total().toFixed(1)} s</b>${gain > 0.05 ? ` (au lieu de ${before.toFixed(1)} s)` : ""}.</div>
       <button class="main" id="aiPlay">Regarder</button>
