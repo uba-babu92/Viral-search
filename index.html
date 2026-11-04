@@ -180,7 +180,6 @@
   <div id="status"></div>
   <div id="panel" class="hidden"></div>
   <div id="results"></div>
-  <details id="raw" class="hidden"><summary>Données brutes (1er résultat)</summary><pre id="rawText"></pre></details>
 </section>
 
 <!-- ===== SCRIPT ===== -->
@@ -967,7 +966,6 @@ async function search(qArg) {
   const status = document.getElementById("status");
   document.getElementById("results").innerHTML = "";
   document.getElementById("panel").classList.add("hidden");
-  document.getElementById("raw").classList.add("hidden");
   if (!q) { status.textContent = "Mets une thématique."; return; }
   status.textContent = "Recherche en cours (1 à 2 min)...";
   let data;
@@ -990,12 +988,12 @@ async function search(qArg) {
       showRaw(data[0]);
       items = data.map(normalizePhoto);
     }
-    // Seulement les vidéos virales (si le scraper donne les vues)
-    if (items.some(v => v.views > 0)) items = items.filter(v => v.views >= MIN_VIEWS);
+    // Les plus vues d'abord ; si pas assez au-dessus du seuil, on complète avec les meilleures juste en dessous
     items.sort((a, b) => b.views - a.views);
-    items = items.slice(0, 60);
-    status.textContent = `${items.length} vidéo(s) à ${fmtNum(MIN_VIEWS)} vues ou plus (sur ${data.length} trouvées).`
-      + (items.length < 15 ? " Peu de résultats : baisse le seuil de vues ou essaie un mot-clé plus large." : "");
+    const above = items.filter(v => v.views >= MIN_VIEWS).length;
+    items = items.slice(0, Math.max(above, Math.min(30, items.length), 0)).slice(0, 60);
+    status.textContent = above >= items.length ? `${items.length} vidéo(s) à ${fmtNum(MIN_VIEWS)} vues ou plus.`
+      : `${above} vidéo(s) à ${fmtNum(MIN_VIEWS)} vues ou plus, complétées par les plus vues juste en dessous.`;
     render(items);
     if (searchType === "videos" && items.length) { lastSearch = { q, items: items.slice(0, 30) }; showUseLast(); }
   } catch (err) {
@@ -1004,7 +1002,7 @@ async function search(qArg) {
 }
 
 function showRaw(first) {
-  if (!first) return;
+  return;   // (débogage retiré de l'appli)
   document.getElementById("rawText").textContent = JSON.stringify(first, null, 2).slice(0, 3000);
   document.getElementById("raw").classList.remove("hidden");
 }
@@ -1016,7 +1014,7 @@ function normalize(v) {
   return {
     views: Number(v.playCount ?? v.stats?.playCount ?? v.plays ?? v.play_count ?? 0),
     likes: Number(v.diggCount ?? v.stats?.diggCount ?? v.likeCount ?? v.likes ?? 0),
-    duration: Number(v.videoMeta?.duration ?? v.video?.duration ?? v.duration ?? 0),
+    duration: Number(v.videoMeta?.duration ?? v.video?.duration ?? v.duration ?? (v.durationMs ? v.durationMs / 1000 : 0)),
     date: created,
     text: text,
     hashtags: [...new Set((text.match(/#[\p{L}\p{N}_]+/gu) || []).map(h => h.toLowerCase()))],

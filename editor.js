@@ -96,26 +96,26 @@
   #edSheet.clear { background: transparent; }
   #edSheet.clear .sheet { max-height: 54vh; box-shadow: 0 -12px 30px #000c; }
   #edSheet .sheet > button:not(.main), .elib button, .esfx button { background: #2a2a2a; color: #fff; border: 0; border-radius: 12px; padding: 10px 12px; font-size: 14px; }
-  .shd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .shd b { font-size: 17px; }
-  .shd .ok { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 20px; border: 0; background: #FF5A4E; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; }
-  .slab { font-size: 11px; color: #8a8a93; text-transform: uppercase; letter-spacing: .1em; margin: 6px 0 0; font-weight: 600; flex: 0 0 auto; }
-  .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; flex: 0 0 auto; }
-  .chips::-webkit-scrollbar, .hrow::-webkit-scrollbar { display: none; }
-  .chip { flex: 0 0 auto; border: 0; border-radius: 999px; padding: 8px 15px; background: #2a2a2a; color: #ddd; font-size: 13px; font-weight: 600; }
-  .chip.on { background: #fff; color: #111; }
-  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; align-content: start; flex: 0 0 auto; }
-  .tile { width: 100%; min-width: 0; height: 74px; justify-content: center; border: 0; border-radius: 14px; background: #262626; color: #eee; padding: 8px 2px; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; }
-  .tile svg { width: 26px; height: 26px; }
-  .tile.on { background: #FF5A4E; color: #fff; }
-  .hrow { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; flex: 0 0 auto; }
-  .hrow .tile { flex: 0 0 74px; width: 74px; }
-  .hrow .tile b { font-size: 24px; line-height: 1.1; font-weight: normal; }
-  .sw { flex: 0 0 32px; width: 32px; height: 32px; border-radius: 16px; border: 2px solid #3a3a3a; padding: 0; }
-  .sw.on { border-color: #fff; box-shadow: 0 0 0 2px #FF5A4E; }
-  .wheel { position: relative; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 16px; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); overflow: hidden; }
-  .wheel input { position: absolute; inset: -4px; opacity: 0; width: 40px; height: 40px; border: 0; padding: 0; }
-  .srow { display: flex; justify-content: space-between; font-size: 13px; color: #ccc; }
+  #ed .shd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  #ed .shd b { font-size: 17px; }
+  #ed .shd .ok { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 20px; border: 0; background: #FF5A4E; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; }
+  #ed .slab { font-size: 11px; color: #8a8a93; text-transform: uppercase; letter-spacing: .1em; margin: 6px 0 0; font-weight: 600; flex: 0 0 auto; }
+  #ed .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; flex: 0 0 auto; }
+  #ed .chips::-webkit-scrollbar, #ed .hrow::-webkit-scrollbar { display: none; }
+  #ed .chip { flex: 0 0 auto; border: 0; border-radius: 999px; padding: 8px 15px; background: #2a2a2a; color: #ddd; font-size: 13px; font-weight: 600; }
+  #ed .chip.on { background: #fff; color: #111; }
+  #ed .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; align-content: start; flex: 0 0 auto; }
+  #ed .tile { width: 100%; min-width: 0; height: 74px; justify-content: center; border: 0; border-radius: 14px; background: #262626; color: #eee; padding: 8px 2px; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; }
+  #ed .tile svg { width: 26px; height: 26px; }
+  #ed .tile.on { background: #FF5A4E; color: #fff; }
+  #ed .hrow { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; flex: 0 0 auto; }
+  #ed .hrow .tile { flex: 0 0 74px; width: 74px; }
+  #ed .hrow .tile b { font-size: 24px; line-height: 1.1; font-weight: normal; }
+  #ed .sw { flex: 0 0 32px; width: 32px; height: 32px; border-radius: 16px; border: 2px solid #3a3a3a; padding: 0; }
+  #ed .sw.on { border-color: #fff; box-shadow: 0 0 0 2px #FF5A4E; }
+  #ed .wheel { position: relative; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 16px; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); overflow: hidden; }
+  #ed .wheel input { position: absolute; inset: -4px; opacity: 0; width: 40px; height: 40px; border: 0; padding: 0; }
+  #ed .srow { display: flex; justify-content: space-between; font-size: 13px; color: #ccc; }
   #edCrop { position: absolute; inset: 0; background: #000; z-index: 20; display: flex; flex-direction: column; color: #fff; }
   #edCrop .ctop { display: flex; justify-content: space-between; align-items: center; padding: max(12px, env(safe-area-inset-top)) 14px 8px; }
   #edCrop .ctop button { border: 0; border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 700; background: #2a2a2a; color: #fff; }
@@ -124,17 +124,17 @@
   #edCrop .ctools button { width: 40px; height: 40px; border-radius: 20px; border: 0; background: #222; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; }
   #edCrop canvas { flex: 1; min-height: 0; width: 100%; touch-action: none; }
   #edCrop .cbot { padding: 6px 12px max(14px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; }
-  .dialw { position: relative; height: 46px; touch-action: none; }
-  .dialw canvas { width: 100%; height: 46px; display: block; }
-  .dialw:after { content: ""; position: absolute; left: 50%; top: 6px; bottom: 6px; width: 2px; margin-left: -1px; background: #FF5A4E; border-radius: 1px; }
-  .dname { text-align: center; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #8a8a93; font-weight: 600; }
-  .knobs { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; padding: 4px 2px; flex: 0 0 auto; }
-  .knobs::-webkit-scrollbar { display: none; }
-  .knob { flex: 0 0 52px; width: 52px; height: 52px; border-radius: 26px; border: 2px solid #3a3a3a; background: #1f1f1f; color: #ddd; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; padding: 0; }
-  .knob svg { width: 22px; height: 22px; }
-  .knob.on { border-color: #FF5A4E; color: #fff; }
-  .knob.set { border-color: #fff; }
-  .knob.on.set { border-color: #FF5A4E; }
+  #ed .dialw { position: relative; height: 46px; touch-action: none; }
+  #ed .dialw canvas { width: 100%; height: 46px; display: block; }
+  #ed .dialw:after { content: ""; position: absolute; left: 50%; top: 6px; bottom: 6px; width: 2px; margin-left: -1px; background: #FF5A4E; border-radius: 1px; }
+  #ed .dname { text-align: center; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #8a8a93; font-weight: 600; }
+  #ed .knobs { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; padding: 4px 2px; flex: 0 0 auto; }
+  #ed .knobs::-webkit-scrollbar { display: none; }
+  #ed .knob { flex: 0 0 52px; width: 52px; height: 52px; border-radius: 26px; border: 2px solid #3a3a3a; background: #1f1f1f; color: #ddd; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; padding: 0; }
+  #ed .knob svg { width: 22px; height: 22px; }
+  #ed .knob.on { border-color: #FF5A4E; color: #fff; }
+  #ed .knob.set { border-color: #fff; }
+  #ed .knob.on.set { border-color: #FF5A4E; }
   .etr { position: absolute; width: 22px; height: 22px; border-radius: 6px; background: #fff; color: #111; z-index: 5; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #0f0f0f; }
   .etr.on { background: #FF5A4E; color: #fff; }
   .etr svg { width: 14px; height: 14px; }
