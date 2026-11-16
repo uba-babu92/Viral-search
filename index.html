@@ -469,16 +469,30 @@ document.getElementById("myFile").addEventListener("change", e => {
   v.preload = "metadata";
   v.onloadedmetadata = () => {
     const orient = v.videoHeight > v.videoWidth ? "vertical" : v.videoWidth > v.videoHeight ? "horizontal" : "carré";
-    myVideo = { duration: v.duration, width: v.videoWidth, height: v.videoHeight, size: f.size };
+    myVideo = { duration: v.duration, width: v.videoWidth, height: v.videoHeight, size: f.size, file: f };
     document.getElementById("myInfo").textContent =
       `Durée ${fmtDuration(v.duration)} · ${v.videoWidth}×${v.videoHeight} (${orient}) · ${(f.size / 1e6).toFixed(1)} Mo`;
     document.getElementById("boxMine").classList.remove("hidden");
   };
   v.src = URL.createObjectURL(f);
 });
-document.getElementById("similar").addEventListener("click", () => {
-  const kw = document.getElementById("myKeywords").value.trim();
-  if (!kw) { document.getElementById("status").textContent = "Écris 2 ou 3 mots-clés pour ta vidéo."; return; }
+document.getElementById("similar").addEventListener("click", async () => {
+  let kw = document.getElementById("myKeywords").value.trim();
+  const info = document.getElementById("myInfo"), btn = document.getElementById("similar");
+  if (!kw && myVideo && myVideo.file) {   // pas de mots-clés : Viral écoute ta vidéo et trouve le sujet tout seul
+    btn.disabled = true;
+    const old = info.textContent;
+    try {
+      info.textContent = `${APP} écoute ta vidéo…`;
+      const said = await transcribeBlob(myVideo.file);
+      info.textContent = `${APP} trouve le sujet…`;
+      kw = (await askModel([{ role: "system", content: "Réponds uniquement par 2 ou 3 mots-clés de recherche TikTok qui décrivent le sujet de cette vidéo, en minuscules, sans hashtag ni ponctuation, dans la langue de la vidéo." }, { role: "user", content: said || "(vidéo sans parole)" }]))
+        .split("\n")[0].replace(/[#"«».,;:!?]/g, "").trim().slice(0, 40);
+      document.getElementById("myKeywords").value = kw;
+    } catch (e) { /* on demandera les mots-clés */ }
+    info.textContent = old; btn.disabled = false;
+  }
+  if (!kw) { info.textContent = "Écris 2 ou 3 mots-clés pour ta vidéo (ex : cuisine rapide)."; document.getElementById("myKeywords").focus(); return; }
   document.getElementById("query").value = kw;
   setType("videos");
   search(kw);
