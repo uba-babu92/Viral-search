@@ -911,7 +911,12 @@ async function smAsk(user, sys = SM_RULES) {
   try { return await askClaude(sys, user); }
   catch (e) { return await askModel([{ role: "system", content: sys }, { role: "user", content: user }]); }
 }
-const smViews = src => { const r = sm.refs[(+src || 0) - 1]; return r ? `inspiré d'une vidéo à ${fmtNum(r.views)} vues` : ""; };
+const smViews = src => {   // jamais « 0 vue » : la vidéo choisie a son propre libellé, sinon on n'affiche rien
+  const r = sm.refs[(+src || 0) - 1];
+  if (!r) return "";
+  if (r.main) return "inspiré de la vidéo que tu as choisie";
+  return r.views > 0 ? `inspiré d'une vidéo à ${fmtNum(r.views)} vues` : "";
+};
 const SMI = {
   chg: '<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>',
   del: '<path d="M6 6l12 12M18 6L6 18"/>',
