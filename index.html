@@ -155,6 +155,9 @@
     .rubriques button.camtab { display: none; }
     #viewer .vbody, #projMenu .sheet { max-width: 560px; margin-left: auto; margin-right: auto; }
   }
+  .morebtn { display: block; margin: 16px auto 6px; width: 54px; height: 54px; border-radius: 27px; border: 0; background: var(--ink); color: #fff; font-size: 28px; line-height: 1; }
+  .morebtn.busy { opacity: .45; animation: pulse 1s infinite alternate; }
+  @keyframes pulse { to { transform: scale(.92); } }
   /* Projets */
   .proj { display: flex; align-items: center; gap: 12px; background: var(--beige); border-radius: 18px; padding: 8px; margin: 8px 0; }
   .proj .pth { position: relative; width: 54px; height: 96px; border-radius: 12px; overflow: hidden; background: var(--ink); flex-shrink: 0; }
@@ -1221,11 +1224,11 @@ async function search(qArg) {
   document.getElementById("panel").classList.add("hidden");
   if (!q) { status.textContent = "Mets une thématique."; return; }
   status.textContent = "Recherche en cours (1 à 2 min)...";
-  let data;
+  let data, qs;
   try {
     if (searchType === "videos") {
       // le mot-clé + 2 variantes trouvées par Viral : plus de chances de tomber sur les gros cartons
-      let qs = [q];
+      qs = [q];
       try {
         const v = await askModel([{ role: "system", content: "Donne 2 variantes de recherche TikTok (2 à 4 mots chacune) pour trouver les vidéos les plus virales sur ce sujet : une proche, une plus large ou dans l'autre langue (français / anglais). Une par ligne, sans numéro, sans hashtag, sans ponctuation." }, { role: "user", content: q }]);
         qs.push(...v.split("\n").map(x => x.replace(/^[-*\d.)\s]+/, "").replace(/[#"«»]/g, "").trim()).filter(x => x && x.length < 50 && x.toLowerCase() !== q.toLowerCase()).slice(0, 2));
@@ -1247,6 +1250,7 @@ async function search(qArg) {
     items = items.slice(0, Math.max(above, Math.min(30, items.length), 0)).slice(0, 60);
     status.textContent = above >= items.length ? `${items.length} vidéo(s) à ${fmtNum(MIN_VIEWS)} vues ou plus.`
       : `${above} vidéo(s) à ${fmtNum(MIN_VIEWS)} vues ou plus, complétées par les plus vues juste en dessous.`;
+    moreState = searchType === "videos" ? { q, used: typeof qs !== "undefined" ? qs.slice() : [q] } : { q: "", used: [] };
     render(items);
     if (searchType === "videos" && items.length) { lastSearch = { q, items: items.slice(0, 30) }; showUseLast(); }
   } catch (err) {
@@ -1262,7 +1266,7 @@ function showRaw(first) {
 
 // Les noms de champs varient selon les scrapers : on teste plusieurs variantes.
 function normalize(v) {
-  const created = v.createTimeISO ?? v.createTime ?? v.create_time ?? null;
+  const created = v.createTimeISO ?? v.createdAt ?? v.createTime ?? v.create_time ?? v.created_at ?? null;
   const text = v.text ?? v.desc ?? "";
   return {
     views: Number(v.playCount ?? v.stats?.playCount ?? v.plays ?? v.play_count ?? 0),
@@ -1320,7 +1324,14 @@ function fmtDate(d) {
   if (!d) return "";
   const date = typeof d === "number" ? new Date(d * 1000) : new Date(d);
   if (isNaN(date)) return "";
-  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  // date relative : on voit tout de suite si la vidéo a marché récemment
+  const days = Math.floor((Date.now() - date) / 864e5);
+  if (days < 1) return "aujourd'hui";
+  if (days < 7) return `il y a ${days} j`;
+  if (days < 30) return `il y a ${Math.floor(days / 7)} sem`;
+  if (days < 365) return `il y a ${Math.floor(days / 30)} mois`;
+  const y = Math.floor(days / 365);
+  return `il y a ${y} an${y > 1 ? "s" : ""}`;
 }
 
 function render(list) {
@@ -1330,7 +1341,7 @@ function render(list) {
     const sameLength = !isCarousel && myVideo && Math.abs(v.duration - myVideo.duration) <= 3;
     const lines = isCarousel
       ? `<span>${fmtNum(v.views)}</span><span>${v.count}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`
-      : `<span>${fmtNum(v.views)}</span><span>${fmtDuration(v.duration)}${sameLength ? " ✓" : ""}</span><span>${fmtDate(v.date)}</span><span>♥ ${fmtNum(v.likes)}</span>`;
+      : `<span>${fmtNum(v.views)}</span><span>${fmtDuration(v.duration)}${sameLength ? " ✓" : ""}</span><span>♥ ${fmtNum(v.likes)}</span>${v.date ? `<span>${fmtDate(v.date)}</span>` : ""}`;
     const btn = "";
     return `
     <div class="tile">
@@ -1340,7 +1351,35 @@ function render(list) {
       ${btn}
     </div>`;
   }).join("") + "</div>";
-  if (!list.length) results.innerHTML = "<div>Aucun résultat.</div>";
+  if (!list.length) { results.innerHTML = "<div>Aucun résultat.</div>"; return; }
+  if (!isCarousel && moreState.q) results.insertAdjacentHTML("beforeend", `<button class="morebtn" id="moreBtn" aria-label="Plus de vidéos">+</button><div class="small" id="moreSt" style="text-align:center"></div>`);
+  const mb = document.getElementById("moreBtn"); if (mb) mb.onclick = loadMore;
+}
+// « + » en bas des résultats : nouvelle recherche avec d'autres mots-clés, ajoutée à la suite
+let moreState = { q: "", used: [] };
+async function loadMore() {
+  const btn = document.getElementById("moreBtn"), st = document.getElementById("moreSt");
+  btn.disabled = true; btn.classList.add("busy");
+  const { q, used } = moreState;
+  let qs = [];
+  try {
+    const v = await askModel([{ role: "system", content: "Donne 2 NOUVELLES recherches TikTok (2 à 4 mots chacune) pour trouver d'autres vidéos très virales sur ce sujet, différentes de celles déjà faites. Une par ligne, sans numéro, sans hashtag, sans ponctuation." }, { role: "user", content: `Sujet : ${q}\nDéjà faites : ${used.join(", ")}` }]);
+    qs = v.split("\n").map(x => x.replace(/^[-*\d.)\s]+/, "").replace(/[#"«»]/g, "").trim()).filter(x => x && x.length < 50 && !used.some(u => u.toLowerCase() === x.toLowerCase())).slice(0, 2);
+  } catch (e) {}
+  if (!qs.length) qs = [`${q} ${["viral", "trend", "tips", "astuce"][used.length % 4]}`];
+  st.textContent = `Recherche de plus de vidéos : ${qs.map(x => "« " + x + " »").join(", ")}…`;
+  try {
+    const parts = await Promise.all(qs.map(x => runActor(VIDEO_ACTOR, { queries: [x], maxVideos: FETCH_VIDEOS }).catch(() => [])));
+    moreState.used.push(...qs);
+    const have = new Set(items.map(v => v.id || v.url));
+    const fresh = parts.flat().map(normalize).filter(v => { const k = v.id || v.url; if (have.has(k)) return false; have.add(k); return true; }).sort((a, b) => b.views - a.views).slice(0, 30);
+    if (!fresh.length) { st.textContent = "Pas d'autres vidéos trouvées. Essaie un autre mot-clé."; btn.disabled = false; btn.classList.remove("busy"); return; }
+    const y = window.scrollY;
+    items.push(...fresh);
+    render(items);
+    window.scrollTo(0, y);
+    document.getElementById("status").textContent = `${items.length} vidéos.`;
+  } catch (e) { st.textContent = "La recherche n'a pas marché. Réessaie."; btn.disabled = false; btn.classList.remove("busy"); }
 }
 
 // Analyse : stats de la vidéo + vidéos similaires déjà trouvées (même hashtag ou durée proche).

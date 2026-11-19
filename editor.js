@@ -2074,7 +2074,7 @@ Si la demande ne dit pas où placer l'animation, commence-la à la barre blanche
     const SW = ["#FFFFFF", "#141414", "#FF5A4E", "#FF3D8B", "#FFD3E5", "#FFD23F", "#3EC1D3", "#7B61FF", "#4ADE80"];
     const chips = (key, list, val) => `<div class="chips">${list.map(([id, l]) => `<button class="chip${val === id ? " on" : ""}" data-${key}="${id}">${l}</button>`).join("")}</div>`;
     sheet(`<div class="shd"><b>${isNew ? "Ajouter un texte" : "Modifier le texte"}</b><button class="ok" id="edTxtOk">${svgI('<path d="M5 12l5 5 9-10"/>')}</button></div>
-      <input type="text" id="edTxt" value="${esc(cur.text)}" placeholder="Ton texte">
+      <textarea id="edTxt" rows="2" placeholder="Ton texte (Entrée = nouvelle ligne)" style="background:#2a2a2a;color:#fff;margin:0;min-height:64px;resize:none">${esc(cur.text)}</textarea>
       <div class="slab">Police</div>
       <div class="hrow">${Object.entries(FONTS).map(([id, [l, f]]) => `<button class="tile${(cur.font || "inter") === id ? " on" : ""}" data-fo="${id}"><b style="font:${f.replace("{s}", "24")}">Aa</b><span>${l}</span></button>`).join("")}</div>
       <div class="slab">Style</div>
