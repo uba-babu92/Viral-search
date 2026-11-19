@@ -1234,9 +1234,18 @@ async function search(qArg) {
         qs.push(...v.split("\n").map(x => x.replace(/^[-*\d.)\s]+/, "").replace(/[#"«»]/g, "").trim()).filter(x => x && x.length < 50 && x.toLowerCase() !== q.toLowerCase()).slice(0, 2));
       } catch (e) { /* on cherche juste le mot-clé */ }
       status.textContent = `Recherche en cours : ${qs.map(x => "« " + x + " »").join(", ")} (1 à 2 min)...`;
-      const parts = await Promise.all(qs.map(x => runActor(VIDEO_ACTOR, { queries: [x], maxVideos: FETCH_VIDEOS }).catch(e => (qs.length === 1 ? Promise.reject(e) : []))));
+      const errs = [];
+      const fetchQs = list => Promise.all(list.map(x => runActor(VIDEO_ACTOR, { queries: [x], maxVideos: FETCH_VIDEOS }).catch(e => { errs.push(e); return []; })));
+      const clean = arr => arr.filter(v => v && !v.error && (v.id || v.webVideoUrl || v.url || v.videoId));
+      let parts = await fetchQs(qs);
+      // rien trouvé : on réessaie avec un mot-clé plus court et plus large
+      if (!clean(parts.flat()).length) {
+        const short = q.split(/\s+/).slice(0, 2).join(" ");
+        if (short.toLowerCase() !== q.toLowerCase()) { status.textContent = `Rien sur « ${q} », j'essaie « ${short} »…`; qs.push(short); parts = await fetchQs([short]); }
+      }
       const seen = new Set();
-      data = parts.flat().filter(v => { const id = String(v.id ?? v.webVideoUrl ?? v.url ?? Math.random()); if (seen.has(id)) return false; seen.add(id); return true; });
+      data = clean(parts.flat()).filter(v => { const id = String(v.id ?? v.videoId ?? v.webVideoUrl ?? v.url); if (seen.has(id)) return false; seen.add(id); return true; });
+      if (!data.length && errs.length) throw errs[0];   // toutes les recherches ont échoué : on montre pourquoi
       showRaw(data[0]);
       items = data.map(normalize);
     } else {
