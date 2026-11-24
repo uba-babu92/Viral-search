@@ -82,3 +82,9 @@
 - Script en blocs colorés : Hook (corail), Texte (gris), Rehook (orange), CTA (bleu) ; outils Changer / Supprimer / Déplacer ; + pour ajouter.
 - Hooks, rehooks, CTA tirés de vraies vidéos virales de la niche, essence gardée, adaptés à l histoire ; réserve préparée d avance (changement instantané), puis recharge auto.
 - Questions au Script manager en bas ; Suivant = chaque bloc devient un plan du prompteur.
+
+## Recherche via ScrapeCreators (fait)
+- Relais : route /sc/... -> api.scrapecreators.com (clé SCRAPE_KEY).
+- TikTok vidéos (search/keyword) et carrousels (search/top), 3 pages par mot-clé ; Instagram (reels search, chemin auto-détecté).
+- Apify garde en secours pour TikTok si ScrapeCreators ne répond pas.
+- À vérifier en vrai : forme exacte des réponses (doc non lisible depuis le serveur).

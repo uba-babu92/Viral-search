@@ -1,5 +1,5 @@
 // Relais sécurisé : les clés restent dans Cloudflare (variables), jamais dans la page.
-// Variables : APIFY_KEY, SHOTSTACK_KEY, SHOTSTACK_ENV ("stage" pour tester, "v1" pour le vrai), AI_KEY (clé Groq), CLAUDE_KEY (clé Anthropic).
+// Variables : APIFY_KEY, SHOTSTACK_KEY, SHOTSTACK_ENV ("stage" pour tester, "v1" pour le vrai), AI_KEY (clé Groq), CLAUDE_KEY (clé Anthropic), SCRAPE_KEY (clé ScrapeCreators).
 const ALLOWED_ORIGIN = "https://uba-babu92.github.io";
 // Seuls ces scrapers Apify sont autorisés
 const APIFY_ACTORS = ["mu0i~tiktok-search-scraper", "scrapingmonkey~tiktok-scraper"];
@@ -25,6 +25,7 @@ export default {
         ia: !!env.AI_KEY,
         apify: !!env.APIFY_KEY,
         claude: !!env.CLAUDE_KEY,
+        scrape: !!env.SCRAPE_KEY,
         mode: env.SHOTSTACK_ENV || "stage",
       }, { headers: cors });
     }
@@ -44,6 +45,10 @@ export default {
         headers: { "Authorization": `Bearer ${env.AI_KEY}`, "Content-Type": "application/json" },
         body,
       });
+    } else if ((m = p.match(/^\/sc\/(v[12]\/(?:tiktok|instagram)\/[a-z0-9\/_-]+)$/)) && request.method === "GET") {
+      // ScrapeCreators (recherche TikTok / Instagram) : la clé reste ici
+      const r = await fetch(`https://api.scrapecreators.com/${m[1]}${url.search}`, { headers: { "x-api-key": env.SCRAPE_KEY || "" } });
+      return new Response(r.body, { status: r.status, headers: { ...cors, "Content-Type": "application/json" } });
     } else if (p === "/claude" && request.method === "POST") {
       // Claude (Anthropic) : réponse en direct (stream), renvoyée telle quelle
       const r = await fetch("https://api.anthropic.com/v1/messages", {

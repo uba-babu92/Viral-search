@@ -219,7 +219,11 @@
     <button class="main" id="similar">Trouver les vidéos similaires</button>
   </div>
 
-  <div class="modes" id="typeModes" style="margin-top:10px">
+  <div class="modes" id="platModes" style="margin-top:10px">
+    <button data-pl="tiktok" class="on">TikTok</button>
+    <button data-pl="instagram">Instagram</button>
+  </div>
+  <div class="modes" id="typeModes">
     <button id="typeVideos" class="on">Vidéos</button>
     <button id="typeCarrousels">Carrousels</button>
   </div>
@@ -812,8 +816,7 @@ async function viralRefs(idea, st) {
   if (!pool && lib[key] && Date.now() - lib[key].at < 14 * 864e5) { st.textContent = `Hooks « ${q} » déjà analysés : je les réutilise.`; return { q, refs: lib[key].refs }; }
   if (!pool) {
     st.textContent = `Recherche des vidéos virales « ${q} » (environ 1 min)…`;
-    const data = await runActor(VIDEO_ACTOR, { queries: [q], maxVideos: 60 });
-    pool = data.map(normalize);
+    pool = await fetchSearch(q, "videos");
   }
   const top = pool.filter(v => !(v.views > 0) || v.views >= MIN_VIEWS).sort((a, b) => b.views - a.views).slice(0, 8);
   let done = 0;
@@ -1108,7 +1111,7 @@ function openViewer(i) {
   const frame = document.getElementById("viewerFrame"), gal = document.getElementById("viewerGallery");
   frame.classList.toggle("hidden", isPhoto);
   gal.classList.toggle("hidden", !isPhoto);
-  frame.src = !isPhoto && v.id ? `https://www.tiktok.com/player/v1/${v.id}?autoplay=1&muted=1&loop=1&rel=0&description=0` : "about:blank";
+  frame.src = isPhoto || !v.id ? "about:blank" : v.platform === "instagram" ? `https://www.instagram.com/reel/${v.id}/embed` : `https://www.tiktok.com/player/v1/${v.id}?autoplay=1&muted=1&loop=1&rel=0&description=0`;
   // L'iPhone n'autorise la lecture automatique que sans le son : on lance la vidéo dès qu'elle est prête
   frame.onload = () => [300, 1000, 2000].forEach(ms => setTimeout(() => {
     ["mute", "play"].forEach(type => frame.contentWindow && frame.contentWindow.postMessage({ "x-tiktok-player": true, type, value: null }, "*"));
@@ -1235,8 +1238,8 @@ async function search(qArg) {
       } catch (e) { /* on cherche juste le mot-clé */ }
       status.textContent = `Recherche en cours : ${qs.map(x => "« " + x + " »").join(", ")} (1 à 2 min)...`;
       const errs = [];
-      const fetchQs = list => Promise.all(list.map(x => runActor(VIDEO_ACTOR, { queries: [x], maxVideos: FETCH_VIDEOS }).catch(e => { errs.push(e); return []; })));
-      const clean = arr => arr.filter(v => v && !v.error && (v.id || v.webVideoUrl || v.url || v.videoId));
+      const fetchQs = list => Promise.all(list.map(x => fetchSearch(x, "videos").catch(e => { errs.push(e); return []; })));
+      const clean = arr => arr.filter(v => v && (v.id || (v.url && v.url !== "#")));
       let parts = await fetchQs(qs);
       // rien trouvé : on réessaie avec un mot-clé plus court et plus large
       if (!clean(parts.flat()).length) {
@@ -1244,14 +1247,12 @@ async function search(qArg) {
         if (short.toLowerCase() !== q.toLowerCase()) { status.textContent = `Rien sur « ${q} », j'essaie « ${short} »…`; qs.push(short); parts = await fetchQs([short]); }
       }
       const seen = new Set();
-      data = clean(parts.flat()).filter(v => { const id = String(v.id ?? v.videoId ?? v.webVideoUrl ?? v.url); if (seen.has(id)) return false; seen.add(id); return true; });
+      data = clean(parts.flat()).filter(v => { const id = String(v.id || v.url); if (seen.has(id)) return false; seen.add(id); return true; });
       if (!data.length && errs.length) throw errs[0];   // toutes les recherches ont échoué : on montre pourquoi
-      showRaw(data[0]);
-      items = data.map(normalize);
+      items = data;
     } else {
-      data = await runActor(PHOTO_ACTOR, { mode: "searchPhotos", searchTerms: [q], maxResults: FETCH_PHOTOS, country: "FR" });
-      showRaw(data[0]);
-      items = data.map(normalizePhoto);
+      items = await fetchSearch(q, "carousels");
+      data = items;
     }
     // Les plus vues d'abord ; si pas assez au-dessus du seuil, on complète avec les meilleures juste en dessous
     items.sort((a, b) => b.views - a.views);
@@ -1271,6 +1272,98 @@ function showRaw(first) {
   return;   // (débogage retiré de l'appli)
   document.getElementById("rawText").textContent = JSON.stringify(first, null, 2).slice(0, 3000);
   document.getElementById("raw").classList.remove("hidden");
+}
+
+// ===== Recherche via ScrapeCreators (TikTok + Instagram), Apify en secours =====
+let platform = localStorage.getItem("platform") || "tiktok";
+document.querySelectorAll("#platModes [data-pl]").forEach(b => {
+  b.classList.toggle("on", b.dataset.pl === platform);
+  b.onclick = () => { platform = b.dataset.pl; localStorage.setItem("platform", platform); document.querySelectorAll("#platModes [data-pl]").forEach(x => x.classList.toggle("on", x === b)); };
+});
+async function sc(path, params) {
+  const u = new URL(`${RELAY}/sc/${path}`);
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, v); });
+  const r = await fetch(u);
+  const t = await r.text();
+  if (!r.ok) { checkCredit("ScrapeCreators", r.status, t); const e = new Error(`recherche ${r.status} ${t.slice(0, 120)}`); e.status = r.status; throw e; }
+  return JSON.parse(t);
+}
+// Trouve les publications dans la réponse, quelle que soit sa forme
+function findMedia(o, out = []) {
+  if (Array.isArray(o)) o.forEach(x => findMedia(x, out));
+  else if (o && typeof o === "object") {
+    if (o.aweme_info && typeof o.aweme_info === "object") { out.push(o.aweme_info); return out; }
+    if (o.aweme_id || (o.statistics && (o.video || o.image_post_info))) { out.push(o); return out; }
+    if ((o.shortcode || o.code) && (o.like_count !== undefined || o.play_count !== undefined || o.taken_at || o.video_view_count !== undefined || o.edge_liked_by)) { out.push(o); return out; }
+    Object.values(o).forEach(x => findMedia(x, out));
+  }
+  return out;
+}
+const firstUrl = x => (x && (x.url_list ? x.url_list[0] : typeof x === "string" ? x : x.url)) || "";
+function normTT(a) {
+  const st = a.statistics || a.stats || {}, au = a.author || {}, id = String(a.aweme_id || a.id || "");
+  const imgs = ((a.image_post_info || {}).images || []).map(im => firstUrl(im.display_image) || firstUrl(im.thumbnail) || firstUrl(im.owner_watermark_image)).filter(Boolean);
+  let dur = (a.video && a.video.duration) || a.duration || 0; if (dur > 1000) dur /= 1000;
+  const text = a.desc || a.description || "";
+  return {
+    views: +(st.play_count ?? st.playCount ?? 0), likes: +(st.digg_count ?? st.diggCount ?? 0), duration: dur,
+    date: a.create_time ?? a.createTime ?? null, text, hashtags: [...new Set((text.match(/#[\p{L}\p{N}_]+/gu) || []).map(h => h.toLowerCase()))],
+    music: (a.music && a.music.title) || "", id, platform: "tiktok", raw: a,
+    url: a.share_url ? String(a.share_url).split("?")[0] : `https://www.tiktok.com/@${au.unique_id || "tiktok"}/${imgs.length ? "photo" : "video"}/${id}`,
+    cover: firstUrl(a.video && a.video.cover) || firstUrl(a.video && a.video.origin_cover) || firstUrl(a.video && a.video.dynamic_cover) || imgs[0] || "",
+    ...(imgs.length ? { images: imgs, count: imgs.length } : {}),
+  };
+}
+function normIG(m) {
+  const code = m.shortcode || m.code || String(m.id || "");
+  const cap = typeof m.caption === "string" ? m.caption : (m.caption && m.caption.text) || ((((m.edge_media_to_caption || {}).edges || [])[0] || {}).node || {}).text || "";
+  const car = (m.carousel_media || ((m.edge_sidecar_to_children || {}).edges || []).map(e => e.node) || []);
+  const imgs = car.map(c => (((c.image_versions2 || {}).candidates || [])[0] || {}).url || c.display_url || c.display_uri).filter(Boolean);
+  const isVideo = !!(m.video_duration || m.play_count || m.video_view_count || m.is_video || m.media_type === 2 || m.product_type === "clips");
+  return {
+    views: +(m.play_count ?? m.video_play_count ?? m.video_view_count ?? m.view_count ?? 0), likes: +(m.like_count ?? (m.edge_liked_by || m.edge_media_preview_like || {}).count ?? 0),
+    duration: +(m.video_duration || 0), date: m.taken_at ?? m.taken_at_timestamp ?? null, text: cap,
+    hashtags: [...new Set((cap.match(/#[\p{L}\p{N}_]+/gu) || []).map(h => h.toLowerCase()))], music: "", id: code, platform: "instagram", raw: m,
+    url: `https://www.instagram.com/${imgs.length || !isVideo ? "p" : "reel"}/${code}/`,
+    cover: m.display_uri || m.thumbnail_src || m.display_url || m.thumbnail_url || (((m.image_versions2 || {}).candidates || [])[0] || {}).url || imgs[0] || "",
+    ...(imgs.length ? { images: imgs, count: imgs.length } : {}),
+  };
+}
+// Pages successives d'une recherche (1 crédit par page)
+async function scPages(path, q, pages) {
+  let cursor, all = [];
+  for (let i = 0; i < pages; i++) {
+    const j = await sc(path, { query: q, cursor });
+    const found = findMedia(j);
+    all.push(...found);
+    cursor = j.cursor ?? j.next_cursor ?? j.nextCursor ?? (j.pagination || {}).cursor ?? (j.paging || {}).cursor;
+    if (!found.length || cursor === undefined || cursor === null || cursor === "" || j.has_more === false || j.has_more === 0 || j.hasMore === false) break;
+  }
+  return all;
+}
+const IG_PATHS = ["v2/instagram/reels/search", "v1/instagram/reels/search", "v1/instagram/search/reels"];
+async function igSearch(q) {
+  const saved = localStorage.getItem("igPath");
+  for (const p of saved ? [saved, ...IG_PATHS.filter(x => x !== saved)] : IG_PATHS) {
+    try { const r = await scPages(p, q, 2); localStorage.setItem("igPath", p); return r.map(normIG); }
+    catch (e) { if (e.status !== 404 && e.status !== 400) throw e; }
+  }
+  throw new Error("recherche Instagram indisponible pour l'instant");
+}
+// Une recherche (un mot-clé) → publications normalisées ; Apify en secours pour TikTok
+async function fetchSearch(q, kind) {
+  if (platform === "instagram") {
+    const r = await igSearch(q);
+    return kind === "carousels" ? r.filter(v => v.images) : r.filter(v => !v.images);
+  }
+  try {
+    if (kind === "carousels") return (await scPages("v1/tiktok/search/top", q, 3)).map(normTT).filter(v => v.images);
+    return (await scPages("v1/tiktok/search/keyword", q, 3)).map(normTT).filter(v => !v.images);
+  } catch (e) {
+    if (e.status === 402 || e.status === 429) throw e;   // plus de crédit : on le dit
+    if (kind === "carousels") return (await runActor(PHOTO_ACTOR, { mode: "searchPhotos", searchTerms: [q], maxResults: FETCH_PHOTOS, country: "FR" })).map(normalizePhoto);
+    return (await runActor(VIDEO_ACTOR, { queries: [q], maxVideos: FETCH_VIDEOS })).map(normalize);
+  }
 }
 
 // Les noms de champs varient selon les scrapers : on teste plusieurs variantes.
@@ -1378,10 +1471,10 @@ async function loadMore() {
   if (!qs.length) qs = [`${q} ${["viral", "trend", "tips", "astuce"][used.length % 4]}`];
   st.textContent = `Recherche de plus de vidéos : ${qs.map(x => "« " + x + " »").join(", ")}…`;
   try {
-    const parts = await Promise.all(qs.map(x => runActor(VIDEO_ACTOR, { queries: [x], maxVideos: FETCH_VIDEOS }).catch(() => [])));
+    const parts = await Promise.all(qs.map(x => fetchSearch(x, "videos").catch(() => [])));
     moreState.used.push(...qs);
     const have = new Set(items.map(v => v.id || v.url));
-    const fresh = parts.flat().map(normalize).filter(v => { const k = v.id || v.url; if (have.has(k)) return false; have.add(k); return true; }).sort((a, b) => b.views - a.views).slice(0, 30);
+    const fresh = parts.flat().filter(v => { const k = v.id || v.url; if (have.has(k)) return false; have.add(k); return true; }).sort((a, b) => b.views - a.views).slice(0, 30);
     if (!fresh.length) { st.textContent = "Pas d'autres vidéos trouvées. Essaie un autre mot-clé."; btn.disabled = false; btn.classList.remove("busy"); return; }
     const y = window.scrollY;
     items.push(...fresh);
